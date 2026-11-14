@@ -49,8 +49,15 @@ data class SecurityEventLog(
     val lastAt: Long = timestamp
 )
 
+/** Totale degli eventi di un tipo (somma dei contatori delle righe raggruppate). */
+data class TypeTotal(val type: String, val total: Int)
+
 @Dao
 interface SecurityEventDao {
+
+    /** Statistiche del report giornaliero: eventi per tipo dopo [since]. */
+    @Query("SELECT type, SUM(count) AS total FROM security_event_log WHERE lastAt > :since GROUP BY type")
+    fun totalsSince(since: Long): List<TypeTotal>
 
     @Insert
     fun insert(event: SecurityEventLog): Long

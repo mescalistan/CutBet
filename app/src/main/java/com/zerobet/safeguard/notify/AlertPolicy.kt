@@ -16,7 +16,13 @@ enum class AlertChannel {
     DOMAINS,
 }
 
-data class AlertPrefs(val critical: Boolean = true, val blocks: Boolean = true, val domains: Boolean = false) {
+data class AlertPrefs(
+    val critical: Boolean = true,
+    val blocks: Boolean = true,
+    val domains: Boolean = false,
+    /** Report giornaliero di stato ("battito cardiaco"). */
+    val heartbeat: Boolean = true,
+) {
     fun allows(channel: AlertChannel): Boolean = when (channel) {
         AlertChannel.CRITICAL -> critical
         AlertChannel.BLOCKS -> blocks
@@ -113,6 +119,44 @@ object AlertPolicy {
         } else {
             entry.text
         }
+
+    /** Liste esterne più vecchie di così: il report lo segnala. */
+    const val LISTS_STALE_MS = 3 * 24 * 60 * 60_000L
+
+    /** Dati del report giornaliero. */
+    data class HeartbeatStats(
+        val vpnOk: Boolean,
+        val guardOk: Boolean,
+        val domains: Int,
+        val searches: Int,
+        val settingsAttempts: Int,
+        val lastListsUpdate: Long?,
+    )
+
+    fun formatHeartbeat(stats: HeartbeatStats, now: Long, zone: ZoneId): String = buildString {
+        val ok = stats.vpnOk && stats.guardOk
+        append(if (ok) "💓 SafeGuard Attivo" else "⚠️ SafeGuard attivo ma INCOMPLETO")
+        append(" · Protezione VPN e Guardiano: ")
+        append(
+            when {
+                ok -> "OK"
+                !stats.vpnOk && !stats.guardOk -> "VPN e Guardiano SPENTI"
+                !stats.vpnOk -> "VPN SPENTA"
+                else -> "Guardiano SPENTO"
+            }
+        )
+        append(" · Blocchi ultime 24h: ${stats.domains} domini, ${stats.searches} ricerche, ")
+        append(if (stats.settingsAttempts == 1) "1 tentativo impostazioni" else "${stats.settingsAttempts} tentativi impostazioni")
+        val last = stats.lastListsUpdate
+        append(
+            when {
+                last == null -> " · Liste esterne mai aggiornate."
+                now - last > LISTS_STALE_MS -> " · Liste NON aggiornate dal ${dateTime(last, zone).substring(0, 10)}."
+                else -> " · Liste aggiornate."
+            }
+        )
+        append("\n🕒 ").append(dateTime(now, zone))
+    }
 
     /** Messaggio di conferma inviato quando il bot viene collegato. */
     const val CONNECTED_MESSAGE = "✅ SafeGuard collegato correttamente! Riceverai qui gli avvisi di sicurezza."

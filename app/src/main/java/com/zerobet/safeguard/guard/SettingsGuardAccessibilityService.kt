@@ -307,7 +307,33 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         return out
     }
 
+    /**
+     * Schermo diviso, finestra flottante o picture-in-picture: la schermata del PIN coprirebbe
+     * solo metà schermo e l'Impostazione resterebbe utilizzabile nell'altra metà. Prima si torna
+     * alla Home (che chiude lo schermo diviso), poi il PIN si apre a tutto schermo.
+     */
     private fun showLockScreen() {
+        if (isMultiWindow()) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            app.securityLog.grouped(
+                "tamper:multiwindow", EventType.TAMPER, Severity.CRITICAL,
+                "Impostazione protetta aperta in schermo diviso o finestra flottante",
+                "Finestre chiuse e PIN richiesto a tutto schermo"
+            )
+            handler.postDelayed({ startLockActivity() }, MULTI_WINDOW_LOCK_DELAY_MS)
+        } else {
+            startLockActivity()
+        }
+    }
+
+    private fun isMultiWindow(): Boolean = try {
+        val apps = windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+        apps.size > 1 || apps.any { it.isInPictureInPictureMode }
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun startLockActivity() {
         startActivity(
             Intent(this, LockScreenActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -362,7 +388,14 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         // b) Analisi dei testi visibili (pagina web, banner pubblicitario, schermata di un'app).
         val text = StringBuilder()
         collectText(root, text, 0, CONTENT_TEXT_CHARS)
-        val hit = ContentClassifier.classify(text) ?: return
+        val hit = ContentClassifier.classify(text)
+        if (hit == null) {
+            // c') Annunci dentro pagine web normali ("Sponsorizzato · Investi nel Forex"): stessa
+            //      regola delle app (etichetta di annuncio vicino a un termine a rischio). Si
+            //      scorre oltre l'annuncio senza bloccare né apprendere il sito che lo ospita.
+            InAppContentAndAdFilter.findAd(readScreen(root).segments)?.let { blockInApp(pkg, it, now) }
+            return
+        }
         blockContent(hit.category.label, now, host.orEmpty())
 
         // c) Auto-apprendimento: solo per siti esterni. Mai per la banca in whitelist (lì si esce
@@ -768,6 +801,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         private var instance: SettingsGuardAccessibilityService? = null
 
         private const val RELOCK_THROTTLE_MS = 800L
+        private const val MULTI_WINDOW_LOCK_DELAY_MS = 350L
         private const val SCAN_DEBOUNCE_MS = 350L
         private const val SCAN_IMMEDIATE_MS = 40L
         private const val SEARCH_ESCALATION_MS = 1_500L
@@ -818,6 +852,20 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             "dual messenger" to "App doppie / clonate",
             "clona app" to "App doppie / clonate",
             "app clone" to "App doppie / clonate",
+            "clone apps" to "App doppie / clonate",
+            "app clonate" to "App doppie / clonate",
+            "app parallele" to "App doppie / clonate",
+            "parallel apps" to "App doppie / clonate",
+            "app duplicate" to "App doppie / clonate",
+            // data e ora: un orologio spostato rompe i certificati TLS e falsa gli orari del registro
+            "data e ora" to "Data e ora di sistema",
+            "data/ora" to "Data e ora di sistema",
+            "date & time" to "Data e ora di sistema",
+            "date and time" to "Data e ora di sistema",
+            "imposta data" to "Data e ora di sistema",
+            "imposta ora" to "Data e ora di sistema",
+            "set date" to "Data e ora di sistema",
+            "set time" to "Data e ora di sistema",
             // opzioni sviluppatore
             "opzioni sviluppatore" to "Opzioni sviluppatore",
             "opzioni per gli sviluppatori" to "Opzioni sviluppatore",
@@ -839,6 +887,11 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             "cancella tutti i dati (ripristino dati di fabbrica)" to "Ripristino dati di fabbrica",
             "erase all data (factory reset)" to "Ripristino dati di fabbrica",
             "factory data reset" to "Ripristino dati di fabbrica",
+            "factory reset" to "Ripristino dati di fabbrica",
+            "cancella tutti i dati" to "Ripristino dati di fabbrica",
+            "erase all data" to "Ripristino dati di fabbrica",
+            "ripristino di fabbrica" to "Ripristino dati di fabbrica",
+            "ripristina impostazioni di fabbrica" to "Ripristino dati di fabbrica",
         )
         private const val SCAN_MAX_WAIT_MS = 1_200L
         private const val RESCAN_WINDOW_MS = 6_000L

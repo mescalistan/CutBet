@@ -2,6 +2,7 @@ package com.zerobet.safeguard.security
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.SystemClock
 import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -20,6 +21,8 @@ import java.security.SecureRandom
  * del file e dal blocco temporaneo dopo tentativi errati implementato qui sotto.
  */
 class PinManager(context: Context) {
+
+    private val appContext: Context = context.applicationContext
 
     private val prefs: SharedPreferences = run {
         // Storage "device protected": il PIN e lo stato della protezione devono essere leggibili
@@ -53,12 +56,22 @@ class PinManager(context: Context) {
             .putString(KEY_HASH, Base64.encodeToString(hash(salt, pin), Base64.NO_WRAP))
             .putInt(KEY_FAILED, 0)
             .putLong(KEY_LOCK_UNTIL, 0L)
+            .putLong(KEY_LOCK_DURATION, 0L)
             .apply()
     }
 
-    /** Millisecondi residui di blocco per troppi tentativi errati (0 = nessun blocco). */
-    fun lockoutRemainingMs(): Long =
-        (prefs.getLong(KEY_LOCK_UNTIL, 0L) - System.currentTimeMillis()).coerceAtLeast(0L)
+    /**
+     * Millisecondi residui di blocco per troppi tentativi errati (0 = nessun blocco). Nello stesso
+     * avvio conta il tempo monotòno: spostare data/ora non accorcia il blocco (vedi [ClockGuard]).
+     */
+    fun lockoutRemainingMs(): Long = ClockGuard.lockoutRemaining(
+        sameBoot = prefs.getInt(KEY_LOCK_BOOT, -2) == TrustedClock.bootCount(appContext),
+        elapsedUntil = prefs.getLong(KEY_LOCK_ELAPSED_UNTIL, 0L),
+        elapsedNow = SystemClock.elapsedRealtime(),
+        wallUntil = prefs.getLong(KEY_LOCK_UNTIL, 0L),
+        wallNow = System.currentTimeMillis(),
+        durationMs = prefs.getLong(KEY_LOCK_DURATION, 0L),
+    )
 
     /**
      * Verifica il PIN con confronto a tempo costante.
@@ -70,7 +83,7 @@ class PinManager(context: Context) {
         val expected = Base64.decode(prefs.getString(KEY_HASH, ""), Base64.NO_WRAP)
         val ok = MessageDigest.isEqual(expected, hash(salt, pin))
         if (ok) {
-            prefs.edit().putInt(KEY_FAILED, 0).putLong(KEY_LOCK_UNTIL, 0L).apply()
+            prefs.edit().putInt(KEY_FAILED, 0).putLong(KEY_LOCK_UNTIL, 0L).putLong(KEY_LOCK_DURATION, 0L).apply()
         } else {
             val failed = prefs.getInt(KEY_FAILED, 0) + 1
             val editor = prefs.edit().putInt(KEY_FAILED, failed)
@@ -78,6 +91,9 @@ class PinManager(context: Context) {
                 val step = (failed - MAX_ATTEMPTS).coerceAtMost(5)
                 val lockMs = (30_000L shl step).coerceAtMost(15 * 60_000L)
                 editor.putLong(KEY_LOCK_UNTIL, System.currentTimeMillis() + lockMs)
+                    .putLong(KEY_LOCK_ELAPSED_UNTIL, SystemClock.elapsedRealtime() + lockMs)
+                    .putInt(KEY_LOCK_BOOT, TrustedClock.bootCount(appContext))
+                    .putLong(KEY_LOCK_DURATION, lockMs)
             }
             editor.apply()
             onWrongPin?.invoke(failed, failed >= MAX_ATTEMPTS)
@@ -109,6 +125,9 @@ class PinManager(context: Context) {
         private const val KEY_SALT = "pin_salt"
         private const val KEY_FAILED = "pin_failed_attempts"
         private const val KEY_LOCK_UNTIL = "pin_lock_until"
+        private const val KEY_LOCK_ELAPSED_UNTIL = "pin_lock_elapsed_until"
+        private const val KEY_LOCK_BOOT = "pin_lock_boot"
+        private const val KEY_LOCK_DURATION = "pin_lock_duration"
         private const val KEY_ONBOARDING = "onboarding_done"
         private const val KEY_PROTECTION = "protection_enabled"
 

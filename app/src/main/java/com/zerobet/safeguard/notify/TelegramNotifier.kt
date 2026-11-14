@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.SystemClock
 import android.util.Log
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -14,7 +15,12 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.zerobet.safeguard.SafeGuardApp
+import com.zerobet.safeguard.data.EventType
 import com.zerobet.safeguard.data.SecurityEventLog
+import com.zerobet.safeguard.guard.SettingsGuardAccessibilityService
+import com.zerobet.safeguard.security.PowerHistory
+import com.zerobet.safeguard.security.TrustedClock
+import com.zerobet.safeguard.vpn.DomainBlockerVpnService
 import com.zerobet.safeguard.security.DeviceStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +56,8 @@ class TelegramNotifier(
     val config: TelegramConfig by lazy { TelegramConfig(context) }
     private val queue = AlertQueue(File(DeviceStorage.context(context).filesDir, QUEUE_FILE))
     private val zone: ZoneId get() = ZoneId.systemDefault()
-    private val dispatcher by lazy { AlertDispatcher(queue, transport, ZoneId.systemDefault()) }
+    // Ora attendibile: con un orologio manomesso gli avvisi non risultano "in ritardo" per errore.
+    private val dispatcher by lazy { AlertDispatcher(queue, transport, ZoneId.systemDefault(), clock = { TrustedClock.now() }) }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flushLock = Mutex()
@@ -99,11 +106,12 @@ class TelegramNotifier(
             flushSoon(0)
         } else {
             val delayMs = synchronized(aggregator) {
-                aggregator.add(BlockItem(event.timestamp, event.title, event.detail), System.currentTimeMillis())
+                // Tempo monotòno: spostare l'orologio non altera la finestra anti-429.
+                aggregator.add(BlockItem(event.timestamp, event.title, event.detail), SystemClock.elapsedRealtime())
             } ?: return
             scope.launch {
                 delay(delayMs)
-                val message = synchronized(aggregator) { aggregator.drain(System.currentTimeMillis(), zone) }
+                val message = synchronized(aggregator) { aggregator.drain(SystemClock.elapsedRealtime(), zone) }
                 if (message != null) {
                     queue.add(message)
                     flush()
@@ -241,6 +249,34 @@ class TelegramNotifier(
                 if (it is SendResult.Ok) _status.value = "Messaggio di prova inviato: ${AlertPolicy.dateTime(System.currentTimeMillis(), zone)}"
             }
         }
+    }
+
+    /**
+     * Report giornaliero di stato. [manual] = richiesto dal tutore dalla dashboard (parte anche
+     * se il report automatico è disattivato). Il messaggio passa dalla coda: se il telefono è
+     * offline parte al ritorno della rete.
+     */
+    suspend fun sendHeartbeat(manual: Boolean): FlushOutcome = withContext(Dispatchers.IO) {
+        val s = config.snapshot
+        if (!s.ready || (!manual && !s.prefs.heartbeat)) return@withContext FlushOutcome.NotConfigured
+        val app = context.applicationContext as SafeGuardApp
+        val now = TrustedClock.now()
+        val totals = try {
+            app.database.securityEventDao().totalsSince(now - 24 * 60 * 60_000L).associate { it.type to it.total }
+        } catch (e: Exception) {
+            emptyMap()
+        }
+        val stats = AlertPolicy.HeartbeatStats(
+            vpnOk = !app.pinManager.protectionEnabled || DomainBlockerVpnService.running.value,
+            guardOk = SettingsGuardAccessibilityService.isEnabled(app),
+            domains = totals[EventType.DOMAIN] ?: 0,
+            searches = totals[EventType.SEARCH] ?: 0,
+            settingsAttempts = totals[EventType.TAMPER] ?: 0,
+            lastListsUpdate = try { app.database.domainDao().lastSyncAt() } catch (e: Exception) { null },
+        )
+        PowerHistory.markAlive(app)
+        queue.add(QueuedAlert(now, AlertPolicy.formatHeartbeat(stats, now, zone)))
+        flush()
     }
 
     fun clearQueue() = queue.clear()

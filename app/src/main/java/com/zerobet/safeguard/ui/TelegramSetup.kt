@@ -181,13 +181,23 @@ fun TelegramSetupSection(modifier: Modifier = Modifier) {
                     SwitchRow("Domini e pubblicità bloccati (più messaggi)", p.domains) {
                         notifier.config.setPrefs(p.copy(domains = it)); refresh()
                     }
+                    SwitchRow("Report giornaliero di stato (Heartbeat)", p.heartbeat) {
+                        notifier.config.setPrefs(p.copy(heartbeat = it)); refresh()
+                    }
+                    Text(
+                        "Ogni 24 ore ricevi \"💓 SafeGuard Attivo\" con lo stato della protezione e i blocchi del giorno. " +
+                            "Se per più di 24 ore non ricevi il messaggio giornaliero 💓, il telefono potrebbe essere spento, " +
+                            "in Modalità Provvisoria o disconnesso.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Text(
                         "Gli avvisi critici partono subito; i blocchi sono raggruppati in al massimo un messaggio al minuto. " +
                             "Se il telefono è offline gli avvisi restano in coda e partono in ordine appena torna la rete.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         OutlinedButton(
                             onClick = {
                                 busy = true
@@ -203,6 +213,22 @@ fun TelegramSetupSection(modifier: Modifier = Modifier) {
                             },
                             enabled = !busy
                         ) { Text("Invia messaggio di prova") }
+                        OutlinedButton(
+                            onClick = {
+                                busy = true
+                                scope.launch {
+                                    result = when (val r = notifier.sendHeartbeat(manual = true)) {
+                                        is com.zerobet.safeguard.notify.FlushOutcome.Done -> true to "Report di stato inviato."
+                                        is com.zerobet.safeguard.notify.FlushOutcome.Offline -> false to "Offline: il report partirà al ritorno della rete."
+                                        is com.zerobet.safeguard.notify.FlushOutcome.RetryAfter -> false to "Telegram chiede di attendere: il report è in coda."
+                                        is com.zerobet.safeguard.notify.FlushOutcome.ConfigError -> false to "Errore: ${r.description}"
+                                        is com.zerobet.safeguard.notify.FlushOutcome.NotConfigured -> false to "Telegram non è collegato."
+                                    }
+                                    busy = false
+                                }
+                            },
+                            enabled = !busy
+                        ) { Text("Report ora") }
                         TextButton(onClick = {
                             notifier.config.disconnect(); notifier.clearQueue(); refresh()
                             token = ""; result = null
@@ -264,6 +290,12 @@ private fun GuideCard() {
                 withStyle(bold) { append("Collega Automaticamente e Invia Test") }
                 append(" qui sotto.")
             })
+            Text(
+                "Ogni giorno riceverai anche un messaggio 💓 di stato. Se per più di 24 ore non ricevi il messaggio " +
+                    "giornaliero 💓, il telefono potrebbe essere spento, in Modalità Provvisoria o disconnesso.",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
             Text(
                 "Il token resta cifrato su questo telefono e viene usato solo per inviare gli avvisi al tuo bot.",
                 style = MaterialTheme.typography.bodySmall

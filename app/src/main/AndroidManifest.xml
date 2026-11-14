@@ -47,18 +47,57 @@
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.SafeGuard"
+        android:usesCleartextTraffic="${cleartextTraffic}"
         tools:targetApi="34">
 
-        <!-- UI principale: onboarding + dashboard protetta da PIN -->
+        <!-- UI principale: onboarding + dashboard protetta da PIN. Niente schermo diviso o finestre
+             flottanti: la dashboard e il PIN occupano sempre tutto lo schermo. -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:resizeableActivity="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Icona nella Home: tre alias della stessa Activity, uno solo abilitato (Modalità Discreta) -->
+        <activity-alias
+            android:name=".LauncherDefault"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@drawable/ic_launcher"
+            android:targetActivity=".ui.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherNetwork"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_alias_network"
+            android:label="@string/alias_network"
+            android:roundIcon="@drawable/ic_alias_network"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherBattery"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_alias_battery"
+            android:label="@string/alias_battery"
+            android:roundIcon="@drawable/ic_alias_battery"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Schermata di blocco a tutto schermo mostrata dal Guardiano Impostazioni -->
         <activity
@@ -69,6 +108,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:noHistory="true"
+            android:resizeableActivity="false"
             android:taskAffinity="com.zerobet.safeguard.lock"
             android:theme="@style/Theme.SafeGuard" />
 
@@ -128,6 +168,17 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Manomissione di data/ora (ACTION_TIME_CHANGED) e cambio di fuso orario -->
+        <receiver
+            android:name=".receiver.TimeChangeReceiver"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 

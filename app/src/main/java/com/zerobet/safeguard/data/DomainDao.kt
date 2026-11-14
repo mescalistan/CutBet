@@ -70,6 +70,10 @@ interface DomainDao {
     @Query("SELECT * FROM sync_status ORDER BY source")
     fun observeSyncStatus(): Flow<List<SyncStatus>>
 
+    /** Ultimo aggiornamento riuscito di una qualsiasi fonte esterna (null se mai). */
+    @Query("SELECT MAX(lastSuccessAt) FROM sync_status")
+    suspend fun lastSyncAt(): Long?
+
     @Query("SELECT * FROM sync_status WHERE source = :source")
     suspend fun syncStatus(source: String): SyncStatus?
 

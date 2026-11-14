@@ -51,6 +51,7 @@ class TelegramConfig(context: Context) {
             critical = prefs.getBoolean(KEY_CRITICAL, true),
             blocks = prefs.getBoolean(KEY_BLOCKS, true),
             domains = prefs.getBoolean(KEY_DOMAINS, false),
+            heartbeat = prefs.getBoolean(KEY_HEARTBEAT, true),
         ),
     )
 
@@ -71,6 +72,7 @@ class TelegramConfig(context: Context) {
         putBoolean(KEY_CRITICAL, value.critical)
         putBoolean(KEY_BLOCKS, value.blocks)
         putBoolean(KEY_DOMAINS, value.domains)
+        putBoolean(KEY_HEARTBEAT, value.heartbeat)
     }
 
     /** Rimuove il collegamento (token e chat); le preferenze restano. */
@@ -95,5 +97,6 @@ class TelegramConfig(context: Context) {
         const val KEY_CRITICAL = "notify_critical"
         const val KEY_BLOCKS = "notify_blocks"
         const val KEY_DOMAINS = "notify_domains"
+        const val KEY_HEARTBEAT = "notify_heartbeat"
     }
 }

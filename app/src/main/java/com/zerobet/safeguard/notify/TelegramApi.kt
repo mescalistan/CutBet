@@ -4,7 +4,8 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
-import javax.net.ssl.HttpsURLConnection
+import com.zerobet.safeguard.BuildConfig
+import java.net.HttpURLConnection
 import java.net.URL
 
 /** Esito di sendMessage. */
@@ -41,7 +42,8 @@ interface TelegramTransport {
 }
 
 /**
- * Bot API di Telegram con il solo HttpsURLConnection della piattaforma: nessuna libreria di rete
+ * Bot API di Telegram (BuildConfig.TELEGRAM_API_BASE, di norma https://api.telegram.org) con il
+ * solo HttpURLConnection della piattaforma: nessuna libreria di rete
  * aggiuntiva nell'APK. Le funzioni di parsing sono pure e coperte da unit test.
  *
  * Il token non compare mai nei log: gli errori riportano solo codice e descrizione di Telegram.
@@ -162,7 +164,7 @@ object TelegramApi : TelegramTransport {
 
     private fun request(token: String, method: String, form: String?): HttpResponse {
         val connection = try {
-            URL("https://$HOST/bot$token/$method").openConnection() as HttpsURLConnection
+            URL("${BuildConfig.TELEGRAM_API_BASE}/bot$token/$method").openConnection() as HttpURLConnection
         } catch (e: IOException) {
             return HttpResponse.Error(e.javaClass.simpleName)
         }

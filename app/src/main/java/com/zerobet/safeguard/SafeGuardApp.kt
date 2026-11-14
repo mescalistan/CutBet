@@ -12,7 +12,10 @@ import com.zerobet.safeguard.data.DomainRepository
 import com.zerobet.safeguard.data.EventType
 import com.zerobet.safeguard.data.Severity
 import com.zerobet.safeguard.guard.IntegrityChecker
+import com.zerobet.safeguard.notify.HeartbeatWorker
 import com.zerobet.safeguard.notify.TelegramNotifier
+import com.zerobet.safeguard.security.PowerHistory
+import com.zerobet.safeguard.security.TrustedClock
 import com.zerobet.safeguard.receiver.SimStateReceiver
 import com.zerobet.safeguard.security.DeviceStorage
 import com.zerobet.safeguard.security.PinManager
@@ -32,7 +35,7 @@ class SafeGuardApp : Application() {
     val database: AppDatabase by lazy { AppDatabase.get(this) }
     val repository: DomainRepository by lazy { DomainRepository(database.domainDao()) }
     val securityLog: SecurityLog by lazy {
-        SecurityLog { database.securityEventDao() }.also { log -> log.listener = { telegram.onSecurityEvent(it) } }
+        SecurityLog(daoProvider = { database.securityEventDao() }).also { log -> log.listener = { telegram.onSecurityEvent(it) } }
     }
     /** Avvisi remoti al tutore via bot Telegram (coda offline nello storage Direct Boot). */
     val telegram: TelegramNotifier by lazy { TelegramNotifier(this) }
@@ -57,6 +60,12 @@ class SafeGuardApp : Application() {
         registerSystemEvents()
         if (DeviceStorage.isReady(this)) {
             try {
+                TrustedClock.init(this)           // orologio manomesso a telefono spento?
+                PowerHistory.onProcessStart(this) // durata del periodo senza protezione
+            } catch (e: Exception) {
+                Log.w("SafeGuardApp", "Controllo dell'orologio non eseguito: ${e.javaClass.simpleName}")
+            }
+            try {
                 telegram.start()
             } catch (e: Exception) {
                 Log.w("SafeGuardApp", "Avvisi Telegram non avviati: ${e.javaClass.simpleName}")
@@ -73,6 +82,7 @@ class SafeGuardApp : Application() {
         try {
             SyncScheduler.schedulePeriodic(this)      // aggiornamento quotidiano delle blocklist
             IntegrityChecker.schedulePeriodic(this)   // controllo dei servizi ogni 15 minuti
+            HeartbeatWorker.schedule(this)            // report giornaliero di stato su Telegram
         } catch (e: Exception) {
             Log.w("SafeGuardApp", "Pianificazione dei lavori periodici fallita: ${e.message}")
         }
@@ -103,6 +113,7 @@ class SafeGuardApp : Application() {
                     }
                     Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT -> {
                         // Scrittura sincrona: tra pochi istanti il processo verrà chiuso.
+                        PowerHistory.markShutdown(context)
                         if (pinManager.onboardingDone) {
                             securityLog.logNow(EventType.POWER, Severity.WARNING, "Telefono spento o riavviato", "Spegnimento richiesto")
                         }

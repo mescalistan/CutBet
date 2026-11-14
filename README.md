@@ -139,7 +139,10 @@ con ricerca binaria: match esatto, poi match sui domini padre (una ricerca per l
 | **App dedicate** (`BlockedPackages`) | Le app di trading, borsa, crypto, scommesse, poker, casinò e finanziarie vengono chiuse all'apertura con una schermata di avviso: elenco di package noti, euristica sul nome del package e sul nome visibile. Resta libera l'app della banca in whitelist. Nel Play Store la scheda di un'app di questo tipo viene chiusa prima che si possa premere "Installa". |
 | **Banca autorizzata: sito + app** | Il catalogo delle banche (`DefaultData.bankPresets`) associa a ogni istituto domini web e package delle app ufficiali. L'app della banca in whitelist resta utilizzabile (saldo, movimenti, bonifici), ma il Guardiano chiude le sezioni il cui titolo in alto è *Richiedi prestito*, *Prestito istantaneo*, *Cessione del quinto*, *Finanziamento*, *Investimenti*, *Trading*, *Compra azioni*, *Crypto*. Le app delle altre banche del catalogo e delle finanziarie (Findomestic, Compass, Agos, Cofidis, IBL…) sono bloccate all'apertura. |
 | **Telegram** | Ricerca globale sempre controllata. Canali, gruppi e bot (sottotitolo "iscritti", "membri", "bot", pulsanti "Unisciti", "Silenzia"): filtro standard. Chat private ("online", "ultimo accesso", "sta scrivendo") ed elenco delle chat: le parole discorsive non contano, si blocca solo per link o domini a rischio (filtro DNS) e inviti a bot o canali con nome a rischio (`@CasinoBonusBot`, `t.me/segnalitrading`). |
-| **Bypass di sistema** | PIN del tutore anche per: installazione manuale di APK (dialogo del package installer e pagina "Installa app sconosciute"), utenti multipli / ospite / secondo spazio / spazio privato / app clonate, opzioni sviluppatore e debug wireless (compresa la loro attivazione con i tocchi su "Numero build"), opzioni di ripristino (rete, preferenze app, dati di fabbrica). Per le pagine delle Impostazioni conta solo il titolo: la pagina "Sistema", che elenca queste voci, resta libera. |
+| **Bypass di sistema** | PIN del tutore anche per: installazione manuale di APK (dialogo del package installer e pagina "Installa app sconosciute"), utenti multipli / ospite / secondo spazio / spazio privato / app clonate, opzioni sviluppatore e debug wireless (compresa la loro attivazione con i tocchi su "Numero build"), opzioni di ripristino (rete, preferenze app, dati di fabbrica, "Cancella tutti i dati"), **Data e ora**, app clonate / gemelle / parallele / Dual Messenger. Per le pagine delle Impostazioni conta solo il titolo: la pagina "Sistema", che elenca queste voci, resta libera. |
+| **Schermo diviso e finestre flottanti** | `MainActivity` e `LockScreenActivity` hanno `resizeableActivity="false"`. Se un'Impostazione protetta viene aperta in schermo diviso, finestra flottante o PiP, il Guardiano torna prima alla Home (chiude lo schermo diviso), poi apre il PIN a tutto schermo e registra l'evento come critico. |
+| **Manomissione di data/ora** | `TimeChangeReceiver` (`TIME_SET`, `TIMEZONE_CHANGED`) confronta la nuova ora con quella attesa dal tempo monotòno (`elapsedRealtime`): uno scarto oltre 5 minuti è un evento CRITICAL *"Manomissione data/ora di sistema rilevata"* (anche a telefono spento, se al riavvio l'ora è precedente all'ultima ora attendibile). Registro e avvisi usano l'ora attendibile; il blocco per PIN errati e la finestra anti-429 usano il tempo monotòno, quindi spostare l'orologio non li accorcia. |
+| **Modalità Discreta** | Nella dashboard, "Aspetto App nella Home": tre `<activity-alias>` della stessa Activity, uno solo abilitato con `setComponentEnabledSetting(..., DONT_KILL_APP)`: *SafeGuard* (scudo), *Servizi di Rete* (ingranaggio), *Gestione Batteria* (batteria). La protezione non si interrompe. |
 | **DNS privato** | Il Guardiano chiede il PIN sul dialogo "DNS privato" delle Impostazioni; la dashboard avvisa se è impostato un provider. |
 
 Le voci delle liste esterne già coperte da parole chiave o euristica non vengono salvate (su circa
@@ -211,6 +214,30 @@ Il collegamento automatico chiama `getUpdates`, prende la chat dell'ultimo `/sta
 - **Rate limit**: al massimo un messaggio al secondo; con HTTP 429 si rispetta `retry_after`. Token revocato o
   chat inesistente non svuotano la coda (massimo 300 avvisi, poi si tengono i più recenti).
 - Il token non compare mai nei log. Per sospendere: interruttore "Avvisi Telegram attivi" oppure "Scollega".
+- **Report giornaliero (heartbeat)**, attivo di default: ogni 24 ore *"💓 SafeGuard Attivo · Protezione VPN e
+  Guardiano: OK · Blocchi ultime 24h: X domini, Y ricerche, Z tentativi impostazioni · Liste aggiornate."*
+  (pulsante "Report ora" per provarlo). **Se per più di 24 ore il messaggio 💓 non arriva, il telefono può essere
+  spento, in Modalità Provvisoria (dove nessuna app di terze parti gira) o disconnesso.**
+- **Durata dello spegnimento**: al riavvio il messaggio dice per quanto la protezione è mancata, calcolato
+  dall'ultimo segnale di vita salvato su disco (controllo periodico, report, spegnimento regolare):
+  *"Telefono riavviato (era spento o in Modalità Provvisoria da 3 ore e 20 minuti)"*.
+
+### Prova con un server Telegram finto
+
+L'URL dell'API è `BuildConfig.TELEGRAM_API_BASE` (di norma `https://api.telegram.org`). Solo per le prove si
+compila una release che punta a un server locale, raggiunto dall'emulatore con `adb reverse`:
+
+```bash
+./gradlew assembleRelease -PtelegramApiBase=http://127.0.0.1:8081
+```
+
+```bash
+adb reverse tcp:8081 tcp:8081
+```
+
+Con questa proprietà il manifest abilita anche l'HTTP in chiaro; senza (la build normale) resta disabilitato.
+Il server finto deve rispondere a `getUpdates` e `sendMessage` come la Bot API (anche con 429 e `retry_after`).
+Dopo le prove va ricompilata la release senza la proprietà.
 
 ## Consumi
 
@@ -284,9 +311,16 @@ SafeGuard è un deterrente efficace, non una barriera assoluta. In particolare:
   titolo della sezione altrove non viene riconosciuta; la sezione "Mutuo" resta consultabile;
 - su Telegram il tipo di chat è dedotto dai testi dell'intestazione: verificato solo con un'app fittizia che li
   riproduce, non con il client reale;
-- gli avvisi Telegram sono verificati sull'emulatore solo fino alla risposta di Telegram (token di prova
-  rifiutato con HTTP 401, anche con la VPN attiva): la consegna a un bot reale va provata con un token vero;
-  la coda offline, l'aggregazione e il 429 sono coperti dagli unit test con un trasporto simulato;
+- gli avvisi Telegram sono verificati dal vivo sulla release R8 con un server Bot API finto (collegamento
+  automatico, aggregazione, coda offline con Wi-Fi e dati spenti, 429, report 💓, riavvio); con i server veri
+  di Telegram solo fino alla risposta (token di prova rifiutato con 401): la consegna a un bot reale va
+  provata con un token vero;
+- l'evento "Telefono spento o riavviato" scritto durante lo spegnimento non è garantito (Android può chiudere il
+  processo prima): la durata dello spegnimento si ricava comunque al riavvio dall'ultimo segnale di vita;
+- la Modalità Provvisoria non è rilevabile mentre è attiva (nessuna app di terze parti gira): la si deduce dal
+  report 💓 mancante e dalla durata riportata al riavvio successivo;
+- le funzioni di schermo diviso e finestra flottante variano tra i produttori: verificato sull'emulatore
+  (Android 16, schermo diviso dal menu delle app recenti), non su Samsung, Xiaomi o OnePlus;
 - le Opzioni sviluppatore chiedono il PIN (verificato sull'emulatore: da Sistema, con l'intent diretto e aprendo
   "Debug wireless" dalla ricerca delle Impostazioni). Anche la loro attivazione è protetta: finché sono spente,
   il primo tocco su "Numero build" (o "Versione MIUI/HyperOS") chiede il PIN e interrompe il conteggio dei 7

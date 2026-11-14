@@ -9,7 +9,9 @@ import android.util.Log
 import com.zerobet.safeguard.SafeGuardApp
 import com.zerobet.safeguard.data.EventType
 import com.zerobet.safeguard.guard.IntegrityChecker
+import com.zerobet.safeguard.security.ClockGuard
 import com.zerobet.safeguard.security.DeviceStorage
+import com.zerobet.safeguard.security.PowerHistory
 import com.zerobet.safeguard.vpn.DomainBlockerVpnService
 
 /**
@@ -38,7 +40,11 @@ class BootReceiver : BroadcastReceiver() {
                 // minuto non è un riavvio del telefono: è l'app che è stata fermata (manomissione).
                 val upMinutes = SystemClock.elapsedRealtime() / 60_000
                 if (upMinutes < REAL_BOOT_MAX_MINUTES) {
-                    app.securityLog.warning(EventType.POWER, "Telefono riavviato", "Avvio completato a schermo bloccato")
+                    app.securityLog.warning(
+                        EventType.POWER,
+                        ClockGuard.rebootTitle(PowerHistory.lastBootDowntime(context)),
+                        "Avvio completato a schermo bloccato"
+                    )
                 } else {
                     app.securityLog.critical(
                         EventType.TAMPER, "SafeGuard è stato arrestato forzatamente",

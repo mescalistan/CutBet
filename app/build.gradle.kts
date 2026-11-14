@@ -34,8 +34,14 @@ android {
         applicationId = "com.zerobet.safeguard"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
+
+        // URL dell'API dei bot Telegram. Solo per le prove con un server finto locale:
+        // ./gradlew assembleRelease -PtelegramApiBase=http://127.0.0.1:8081 (abilita anche HTTP in chiaro).
+        val telegramApiBase = (project.findProperty("telegramApiBase") as String?) ?: "https://api.telegram.org"
+        buildConfigField("String", "TELEGRAM_API_BASE", "\"$telegramApiBase\"")
+        manifestPlaceholders["cleartextTraffic"] = telegramApiBase.startsWith("http://").toString()
     }
 
     signingConfigs {
@@ -69,6 +75,7 @@ android {
         jvmTarget = "17"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     packaging {

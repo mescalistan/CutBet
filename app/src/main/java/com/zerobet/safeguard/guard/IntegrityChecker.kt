@@ -19,6 +19,8 @@ import com.zerobet.safeguard.R
 import com.zerobet.safeguard.SafeGuardApp
 import com.zerobet.safeguard.data.EventType
 import com.zerobet.safeguard.security.DeviceStorage
+import com.zerobet.safeguard.security.PowerHistory
+import com.zerobet.safeguard.security.TrustedClock
 import com.zerobet.safeguard.ui.LockScreenActivity
 import com.zerobet.safeguard.vpn.DomainBlockerVpnService
 import java.util.concurrent.TimeUnit
@@ -56,6 +58,12 @@ object IntegrityChecker {
         lastCheckAt = now
         if (!DeviceStorage.isReady(context)) return null
         val app = context.applicationContext as SafeGuardApp
+        try {
+            PowerHistory.markAlive(app)       // segnale di vita per il calcolo dei periodi da spento
+            TrustedClock.saveBaseline(app)    // riferimento aggiornato per il controllo di data/ora
+        } catch (e: Exception) {
+            Log.w(TAG, "Segnale di vita non salvato: ${e.javaClass.simpleName}")
+        }
         return try {
             val pin = app.pinManager
             if (!pin.onboardingDone || GuardState.inGrace) return null

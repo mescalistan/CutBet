@@ -409,6 +409,12 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
             }
         }
 
+        // ---- Modalità Discreta: nome e icona nella Home ----
+        item {
+            Spacer(Modifier.height(8.dp))
+            AppearanceCard()
+        }
+
         // ---- Rimozione legittima dell'app ----
         item {
             Spacer(Modifier.height(8.dp))

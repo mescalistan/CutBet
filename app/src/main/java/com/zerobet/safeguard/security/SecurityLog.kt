@@ -46,7 +46,11 @@ class EventGrouper(private val windowMs: Long = 60_000L, private val maxKeys: In
  * Il DB sta nello storage "device protected", quindi il registro funziona anche subito dopo il
  * riavvio, prima che l'utente sblocchi lo schermo.
  */
-class SecurityLog(private val daoProvider: () -> SecurityEventDao) {
+class SecurityLog(
+    private val daoProvider: () -> SecurityEventDao,
+    /** Ora attendibile: un orologio di sistema manomesso non falsa gli orari del registro. */
+    private val clock: () -> Long = { TrustedClock.now() },
+) {
 
     private val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "safeguard-log").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
@@ -66,13 +70,13 @@ class SecurityLog(private val daoProvider: () -> SecurityEventDao) {
     fun critical(type: String, title: String, detail: String = "") = log(type, Severity.CRITICAL, title, detail)
 
     fun log(type: String, severity: String, title: String, detail: String = "") {
-        val now = System.currentTimeMillis()
+        val now = clock()
         submit { insert(SecurityEventLog(timestamp = now, severity = severity, type = type, title = title, detail = detail.take(300))) }
     }
 
     /** Come [log] ma attende la scrittura (fino a [timeoutMs]): serve allo spegnimento del telefono. */
     fun logNow(type: String, severity: String, title: String, detail: String = "", timeoutMs: Long = 1500) {
-        val now = System.currentTimeMillis()
+        val now = clock()
         try {
             executor.submit {
                 insert(SecurityEventLog(timestamp = now, severity = severity, type = type, title = title, detail = detail))
@@ -88,7 +92,7 @@ class SecurityLog(private val daoProvider: () -> SecurityEventDao) {
      * il contatore di quella esistente (scritto sul DB al più ogni [FLUSH_DELAY_S] secondi).
      */
     fun grouped(key: String, type: String, severity: String, title: String, detail: String) {
-        val now = System.currentTimeMillis()
+        val now = clock()
         submit {
             if (grouper.hit(key, now) != null) {
                 scheduleFlush()
