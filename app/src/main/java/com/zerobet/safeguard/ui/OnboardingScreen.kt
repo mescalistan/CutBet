@@ -55,28 +55,29 @@ import com.zerobet.safeguard.ui.components.PinPad
 import com.zerobet.safeguard.ui.theme.SafeGreen
 import com.zerobet.safeguard.vpn.DomainBlockerVpnService
 
-/** Wizard iniziale in 3 passi, eseguito dal tutore: PIN -> banca -> permessi. */
+/** Wizard iniziale in 4 passi, eseguito dal tutore: PIN -> banca -> avvisi Telegram (facoltativo) -> permessi. */
 @Composable
 fun OnboardingScreen(vm: MainViewModel, onFinished: () -> Unit) {
     var step by rememberSaveable { mutableIntStateOf(0) }
-    val titles = listOf("Crea il PIN del tutore", "Banca autorizzata", "Permessi obbligatori")
+    val titles = listOf("Crea il PIN del tutore", "Banca autorizzata", "Notifiche Telegram (facoltativo)", "Permessi obbligatori")
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
             Text(
-                "SafeGuard · Passo ${step + 1} di 3",
+                "SafeGuard · Passo ${step + 1} di ${titles.size}",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.height(4.dp))
             Text(titles[step], style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))
-            LinearProgressIndicator(progress = { (step + 1) / 3f }, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(progress = { (step + 1) / titles.size.toFloat() }, modifier = Modifier.fillMaxWidth())
         }
         Box(Modifier.weight(1f)) {
             when (step) {
                 0 -> PinSetupStep(vm) { step = 1 }
                 1 -> BankStep(vm) { step = 2 }
+                2 -> TelegramStep { step = 3 }
                 else -> PermissionsStep(vm, onFinished)
             }
         }
@@ -182,7 +183,32 @@ private fun BankStep(vm: MainViewModel, onDone: () -> Unit) {
 }
 
 // -------------------------------------------------------------------------------------------
-// Passo 3: concessione dei tre permessi di sistema
+// Passo 3: avvisi Telegram sul telefono del tutore (facoltativo, modificabile dalla dashboard)
+// -------------------------------------------------------------------------------------------
+@Composable
+private fun TelegramStep(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val config = remember { (context.applicationContext as com.zerobet.safeguard.SafeGuardApp).telegram.config }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            "Ricevi su Telegram un avviso quando qualcuno rimuove la SIM, riavvia il telefono, sbaglia il PIN " +
+                "o prova a disattivare SafeGuard. Puoi configurarlo anche più tardi dalla dashboard.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TelegramSetupSection()
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text(if (config.snapshot.chatId != null) "Avanti" else "Salta per ora")
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// Passo 4: concessione dei tre permessi di sistema
 // -------------------------------------------------------------------------------------------
 /** Dialogo di sistema che chiede di escludere l'app dal risparmio energetico (Doze). */
 @android.annotation.SuppressLint("BatteryLife")

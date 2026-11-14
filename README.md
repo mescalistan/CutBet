@@ -26,6 +26,36 @@ contenuti a schermo.
 ./gradlew testDebugUnitTest
 ```
 
+### Build di release firmata (APK e App Bundle)
+
+La release ha R8 attivo (`isMinifyEnabled` e `isShrinkResources`, regole in `app/proguard-rules.pro`) ed è
+firmata con il keystore indicato in `keystore.properties` nella radice del progetto:
+
+```properties
+storeFile=keystore/safeguard-release.jks
+storePassword=...
+keyAlias=safeguard
+keyPassword=...
+```
+
+`keystore.properties` e la cartella `keystore/` sono esclusi da git: **conservane una copia sicura**, perché
+senza quel keystore non si possono più pubblicare aggiornamenti della stessa app. In alternativa (es. CI)
+si possono usare le variabili d'ambiente `SAFEGUARD_STORE_FILE`, `SAFEGUARD_STORE_PASSWORD`,
+`SAFEGUARD_KEY_ALIAS`, `SAFEGUARD_KEY_PASSWORD`; senza nessuna delle due la release esce non firmata.
+
+```bash
+./gradlew assembleRelease
+```
+
+```bash
+./gradlew bundleRelease
+```
+
+Uscite: `app/build/outputs/apk/release/app-release.apk` (installazione diretta, circa 1,5 MB) e
+`app/build/outputs/bundle/release/app-release.aab` (Play Store). La build di release usa una firma diversa
+da quella di debug: per passare dall'una all'altra sullo stesso telefono va prima disinstallata l'app
+("Sblocca Disinstallazione" dalla dashboard).
+
 ## Struttura del progetto
 
 ```
@@ -66,9 +96,16 @@ app/src/main/
     ├── vpn/HashedDomainSet.kt     Liste esterne compatte (hash a 64 bit + ricerca binaria)
     ├── receiver/SimStateReceiver.kt  Rimozione/inserimento SIM
     ├── receiver/BootReceiver.kt   Riavvio al boot (LOCKED_BOOT_COMPLETED)
+    ├── notify/
+    │   ├── TelegramNotifier.kt    Avvisi al tutore via bot Telegram, collegamento automatico
+    │   ├── TelegramApi.kt         Bot API con HttpsURLConnection (sendMessage, getUpdates)
+    │   ├── TelegramConfig.kt      Token e chat cifrati nello storage Direct Boot
+    │   ├── AlertQueue.kt          Coda offline persistente e invio in ordine cronologico
+    │   └── AlertPolicy.kt         Livelli di dettaglio, testi, aggregazione dei blocchi
     └── ui/
         ├── MainActivity.kt        Onboarding → PIN → Dashboard
-        ├── OnboardingScreen.kt    Wizard: PIN, banca, permessi
+        ├── OnboardingScreen.kt    Wizard: PIN, banca, Telegram (facoltativo), permessi
+        ├── TelegramSetup.kt       Guida e configurazione degli avvisi Telegram
         ├── DashboardScreen.kt     Whitelist/blacklist, pausa, sblocco disinstallazione
         ├── LockScreenActivity.kt  Richiesta PIN sopra le Impostazioni
         └── components/PinPad.kt
@@ -143,6 +180,38 @@ Un badge mostra gli eventi critici avvenuti dall'ultimo accesso del tutore. Regi
 Il registro tiene le ultime 5.000 righe; si svuota solo dalla dashboard, dopo una conferma, e la pulizia
 lascia a sua volta una riga.
 
+## Notifiche remote su Telegram
+
+Il tutore può ricevere gli avvisi sul proprio telefono tramite un bot Telegram personale. Si configura
+nell'onboarding (passo facoltativo) o in qualsiasi momento dalla scheda **Notifiche Telegram** della
+dashboard, dietro PIN, con una guida in tre passi:
+
+1. sul telefono del tutore, in Telegram, cercare **@BotFather** (badge blu), premere Avvia e inviare `/newbot`;
+2. scegliere un nome e uno username che finisca per `bot`, copiare il **Token HTTP API** e incollarlo in SafeGuard;
+3. aprire la chat del nuovo bot, premere **AVVIA** (`/start`) e toccare **Collega Automaticamente e Invia Test**.
+
+Il collegamento automatico chiama `getUpdates`, prende la chat dell'ultimo `/start`, invia
+*"✅ SafeGuard collegato correttamente! Riceverai qui gli avvisi di sicurezza."* e mostra
+"Collegato a: Nome (ID: …)". Chi conosce già il proprio Chat ID può inserirlo a mano (sezione avanzata).
+
+| Livello (interruttore) | Eventi | Invio |
+|---|---|---|
+| **Avvisi critici** (attivo) | SIM rimossa o cambiata, telefono spento/riavviato, arresto forzato, Impostazioni protette (VPN, Accessibilità, Device Admin, Opzioni sviluppatore, Numero build, disinstallazione), PIN errati, servizi trovati spenti | Subito, un messaggio per evento |
+| **Ricerche e app vietate** (attivo) | Ricerche bloccate, app dedicate aperte, pagine/video/post bloccati | Aggregati: al massimo un messaggio al minuto |
+| **Domini e pubblicità** (spento) | Domini bloccati dal filtro DNS, pubblicità scavalcate | Aggregati come sopra |
+
+- **Nessuna libreria di rete**: `HttpsURLConnection` della piattaforma, in `Dispatchers.IO`. `api.telegram.org`
+  è tra i domini interni sempre consentiti dal filtro DNS (`DomainFilter.ALWAYS_ALLOWED`).
+- **Direct Boot**: token, chat e preferenze sono in EncryptedSharedPreferences nello storage protetto dal
+  dispositivo; la coda è un file nello stesso storage. Gli avvisi di un riavvio partono anche a schermo bloccato.
+- **Coda offline**: ogni avviso viene scritto su disco con l'orario esatto del fatto prima di tentare l'invio.
+  Se il telefono è offline (SIM appena rimossa, modalità aereo) resta in coda; al ritorno di una rete
+  (`ConnectivityManager.NetworkCallback` sulle reti reali, più un lavoro WorkManager con vincolo di rete come
+  riserva) gli arretrati partono in ordine cronologico, raggruppati, con la nota "inviato in ritardo".
+- **Rate limit**: al massimo un messaggio al secondo; con HTTP 429 si rispetta `retry_after`. Token revocato o
+  chat inesistente non svuotano la coda (massimo 300 avvisi, poi si tengono i più recenti).
+- Il token non compare mai nei log. Per sospendere: interruttore "Avvisi Telegram attivi" oppure "Scollega".
+
 ## Consumi
 
 | Misura | Valore |
@@ -215,6 +284,9 @@ SafeGuard è un deterrente efficace, non una barriera assoluta. In particolare:
   titolo della sezione altrove non viene riconosciuta; la sezione "Mutuo" resta consultabile;
 - su Telegram il tipo di chat è dedotto dai testi dell'intestazione: verificato solo con un'app fittizia che li
   riproduce, non con il client reale;
+- gli avvisi Telegram sono verificati sull'emulatore solo fino alla risposta di Telegram (token di prova
+  rifiutato con HTTP 401, anche con la VPN attiva): la consegna a un bot reale va provata con un token vero;
+  la coda offline, l'aggregazione e il 429 sono coperti dagli unit test con un trasporto simulato;
 - le Opzioni sviluppatore chiedono il PIN (verificato sull'emulatore: da Sistema, con l'intent diretto e aprendo
   "Debug wireless" dalla ricerca delle Impostazioni). Anche la loro attivazione è protetta: finché sono spente,
   il primo tocco su "Numero build" (o "Versione MIUI/HyperOS") chiede il PIN e interrompe il conteggio dei 7

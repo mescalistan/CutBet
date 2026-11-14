@@ -1,8 +1,29 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+}
+
+/**
+ * Firma di release: keystore.properties (LOCALE, escluso da git) nella radice del progetto, con
+ * storeFile, storePassword, keyAlias, keyPassword. In alternativa le variabili d'ambiente
+ * SAFEGUARD_STORE_FILE, SAFEGUARD_STORE_PASSWORD, SAFEGUARD_KEY_ALIAS, SAFEGUARD_KEY_PASSWORD
+ * (es. in CI). Senza nessuna delle due la release viene prodotta non firmata.
+ */
+val releaseSigning: Map<String, String>? = run {
+    val file = rootProject.file("keystore.properties")
+    val props = Properties().apply { if (file.exists()) file.inputStream().use { load(it) } }
+    fun value(key: String, env: String) = props.getProperty(key) ?: System.getenv(env)
+    val storeFile = value("storeFile", "SAFEGUARD_STORE_FILE") ?: return@run null
+    mapOf(
+        "storeFile" to storeFile,
+        "storePassword" to (value("storePassword", "SAFEGUARD_STORE_PASSWORD") ?: ""),
+        "keyAlias" to (value("keyAlias", "SAFEGUARD_KEY_ALIAS") ?: "safeguard"),
+        "keyPassword" to (value("keyPassword", "SAFEGUARD_KEY_PASSWORD") ?: ""),
+    )
 }
 
 android {
@@ -13,12 +34,24 @@ android {
         applicationId = "com.zerobet.safeguard"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+    }
+
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigning.getValue("storeFile"))
+                storePassword = releaseSigning.getValue("storePassword")
+                keyAlias = releaseSigning.getValue("keyAlias")
+                keyPassword = releaseSigning.getValue("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (releaseSigning != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -72,4 +105,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Implementazione reale di org.json per i test JVM (su Android è quella della piattaforma).
+    testImplementation("org.json:json:20240303")
 }

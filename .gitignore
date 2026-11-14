@@ -15,3 +15,7 @@ captures/
 
 # PIN di prova dell'emulatore (solo locale, vedi README)
 emulator-test-pin.txt
+
+# Firma di release: keystore e password restano solo in locale (vedi README)
+keystore/
+keystore.properties

@@ -282,10 +282,13 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
                         }
                     }
                 )
+                Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Notifiche Telegram") })
             }
         }
 
-        if (tab == 0) {
+        if (tab == 4) {
+            item { TelegramSetupSection(Modifier.padding(vertical = 8.dp)) }
+        } else if (tab == 0) {
             item { AddWhitelistRow(vm) }
             if (whitelist.isEmpty()) {
                 item { Text("Nessuna banca autorizzata.", Modifier.padding(vertical = 8.dp)) }

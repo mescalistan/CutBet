@@ -62,6 +62,7 @@ class DomainFilter(
     fun check(rawDomain: String): Verdict {
         val domain = normalize(rawDomain)
         if (domain.isEmpty()) return Verdict.ALLOW
+        if (domain in ALWAYS_ALLOWED) return Verdict.ALLOW
         if (matches(whitelist, domain)) return Verdict.ALLOW
         if (matches(blockedDomains, domain) || external.matches(domain)) return Verdict(BlockReason.LIST)
         return checkRules(domain)
@@ -110,6 +111,12 @@ class DomainFilter(
     private fun normalize(raw: String): String = raw.lowercase().trimEnd('.')
 
     companion object {
+        /**
+         * Domini interni di SafeGuard, mai bloccati da nessuna regola o lista: l'API dei bot
+         * Telegram usata per gli avvisi al tutore.
+         */
+        val ALWAYS_ALLOWED: Set<String> = setOf("api.telegram.org")
+
         val EMPTY = DomainFilter(emptySet(), emptySet(), emptyList(), heuristicsEnabled = false)
     }
 }

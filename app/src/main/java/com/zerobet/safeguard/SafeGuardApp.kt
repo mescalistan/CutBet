@@ -12,6 +12,7 @@ import com.zerobet.safeguard.data.DomainRepository
 import com.zerobet.safeguard.data.EventType
 import com.zerobet.safeguard.data.Severity
 import com.zerobet.safeguard.guard.IntegrityChecker
+import com.zerobet.safeguard.notify.TelegramNotifier
 import com.zerobet.safeguard.receiver.SimStateReceiver
 import com.zerobet.safeguard.security.DeviceStorage
 import com.zerobet.safeguard.security.PinManager
@@ -30,7 +31,11 @@ import com.zerobet.safeguard.vpn.FilterStore
 class SafeGuardApp : Application() {
     val database: AppDatabase by lazy { AppDatabase.get(this) }
     val repository: DomainRepository by lazy { DomainRepository(database.domainDao()) }
-    val securityLog: SecurityLog by lazy { SecurityLog { database.securityEventDao() } }
+    val securityLog: SecurityLog by lazy {
+        SecurityLog { database.securityEventDao() }.also { log -> log.listener = { telegram.onSecurityEvent(it) } }
+    }
+    /** Avvisi remoti al tutore via bot Telegram (coda offline nello storage Direct Boot). */
+    val telegram: TelegramNotifier by lazy { TelegramNotifier(this) }
     val pinManager: PinManager by lazy {
         PinManager(this).also { pin ->
             pin.onWrongPin = { attempt, locked ->
@@ -50,6 +55,13 @@ class SafeGuardApp : Application() {
         super.onCreate()
         DeviceStorage.migrate(this)
         registerSystemEvents()
+        if (DeviceStorage.isReady(this)) {
+            try {
+                telegram.start()
+            } catch (e: Exception) {
+                Log.w("SafeGuardApp", "Avvisi Telegram non avviati: ${e.javaClass.simpleName}")
+            }
+        }
         if (DeviceStorage.isUnlocked(this)) onUserUnlocked()
     }
 

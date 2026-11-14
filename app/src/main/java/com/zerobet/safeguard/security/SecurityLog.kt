@@ -52,6 +52,12 @@ class SecurityLog(private val daoProvider: () -> SecurityEventDao) {
         Thread(r, "safeguard-log").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
     }
     private val grouper = EventGrouper()
+
+    /**
+     * Chiamato (sul thread del registro) per ogni nuova riga scritta: lo usa il notifier
+     * Telegram. Le ripetizioni raggruppate in una riga esistente non lo richiamano.
+     */
+    @Volatile var listener: ((SecurityEventLog) -> Unit)? = null
     private var flushScheduled = false
     private var inserts = 0
 
@@ -99,13 +105,22 @@ class SecurityLog(private val daoProvider: () -> SecurityEventDao) {
 
     fun clear() = submit { daoProvider().clear() }
 
-    private fun insert(event: SecurityEventLog): Long = try {
-        val id = daoProvider().insert(event)
-        if (++inserts % TRIM_EVERY == 0) daoProvider().trim(MAX_ROWS)
-        id
-    } catch (e: Exception) {
-        Log.w(TAG, "Scrittura del registro fallita: ${e.message}")
-        -1
+    private fun insert(event: SecurityEventLog): Long {
+        val id = try {
+            daoProvider().insert(event).also {
+                if (++inserts % TRIM_EVERY == 0) daoProvider().trim(MAX_ROWS)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Scrittura del registro fallita: ${e.message}")
+            -1
+        }
+        // Anche se il DB non è scrivibile, l'avviso remoto parte comunque.
+        try {
+            listener?.invoke(event)
+        } catch (e: Exception) {
+            Log.w(TAG, "Avviso remoto non accodato: ${e.javaClass.simpleName}")
+        }
+        return id
     }
 
     private fun scheduleFlush() {
