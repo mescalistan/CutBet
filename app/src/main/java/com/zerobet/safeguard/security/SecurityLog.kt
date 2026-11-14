@@ -74,18 +74,28 @@ class SecurityLog(
         submit { insert(SecurityEventLog(timestamp = now, severity = severity, type = type, title = title, detail = detail.take(300))) }
     }
 
-    /** Come [log] ma attende la scrittura (fino a [timeoutMs]): serve allo spegnimento del telefono. */
-    fun logNow(type: String, severity: String, title: String, detail: String = "", timeoutMs: Long = 1500) {
-        val now = clock()
-        try {
-            executor.submit {
-                insert(SecurityEventLog(timestamp = now, severity = severity, type = type, title = title, detail = detail))
-                flush()
-            }.get(timeoutMs, TimeUnit.MILLISECONDS)
-        } catch (e: Exception) {
-            Log.w(TAG, "Evento non scritto in tempo: $title")
-        }
+    /**
+     * Come [log] ma attende la scrittura (fino a [timeoutMs]): serve allo spegnimento del telefono.
+     * [notify] = false quando l'avviso remoto è già stato accodato da chi chiama.
+     * @return true se la riga è stata scritta in tempo.
+     */
+    fun logNow(
+        type: String, severity: String, title: String, detail: String = "", timeoutMs: Long = 1500,
+        notify: Boolean = true, timestamp: Long = clock(),
+    ): Boolean = try {
+        executor.submit<Long> {
+            val id = insert(SecurityEventLog(timestamp = timestamp, severity = severity, type = type, title = title, detail = detail), notify)
+            flush()
+            id
+        }.get(timeoutMs, TimeUnit.MILLISECONDS) > 0
+    } catch (e: Exception) {
+        Log.w(TAG, "Evento non scritto in tempo: $title")
+        false
     }
+
+    /** Evento con un orario passato (es. lo spegnimento registrato solo al riavvio). */
+    fun logAt(timestamp: Long, type: String, severity: String, title: String, detail: String, notify: Boolean = true) =
+        submit { insert(SecurityEventLog(timestamp = timestamp, severity = severity, type = type, title = title, detail = detail.take(300)), notify) }
 
     /**
      * Evento raggruppabile: se [key] si ripete entro un minuto non crea una nuova riga ma aumenta
@@ -109,7 +119,7 @@ class SecurityLog(
 
     fun clear() = submit { daoProvider().clear() }
 
-    private fun insert(event: SecurityEventLog): Long {
+    private fun insert(event: SecurityEventLog, notify: Boolean = true): Long {
         val id = try {
             daoProvider().insert(event).also {
                 if (++inserts % TRIM_EVERY == 0) daoProvider().trim(MAX_ROWS)
@@ -119,7 +129,7 @@ class SecurityLog(
             -1
         }
         // Anche se il DB non è scrivibile, l'avviso remoto parte comunque.
-        try {
+        if (notify) try {
             listener?.invoke(event)
         } catch (e: Exception) {
             Log.w(TAG, "Avviso remoto non accodato: ${e.javaClass.simpleName}")

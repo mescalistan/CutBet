@@ -171,6 +171,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- Spegnimento: registrazione sincrona (goAsync). Di norma lo riceve il receiver registrato a
+             runtime (il processo è vivo grazie alla VPN); questo copre il caso del processo fermo. -->
+        <receiver
+            android:name=".receiver.ShutdownReceiver"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
+                <action android:name="android.intent.action.QUICKBOOT_POWEROFF" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWEROFF" />
+            </intent-filter>
+        </receiver>
+
         <!-- Manomissione di data/ora (ACTION_TIME_CHANGED) e cambio di fuso orario -->
         <receiver
             android:name=".receiver.TimeChangeReceiver"

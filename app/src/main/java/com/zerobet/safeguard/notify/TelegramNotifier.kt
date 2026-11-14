@@ -61,6 +61,10 @@ class TelegramNotifier(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flushLock = Mutex()
+    /** Una sola lettura di getUpdates alla volta (Telegram risponde 409 a letture concorrenti). */
+    private val updatesLock = Mutex()
+    /** Comandi remoti del tutore (/stato, /ultimi, /blocca, /consenti, /aiuto). */
+    val commands: TelegramCommandPoller by lazy { TelegramCommandPoller(context, transport, updatesLock) }
     @Volatile private var flushAgain = false
     private val aggregator = BlockAggregator()
     private var retryJob: Job? = null
@@ -204,7 +208,7 @@ class TelegramNotifier(
         if (!TelegramApi.isValidToken(token)) {
             return@withContext ConnectResult.Error("Il token non ha il formato corretto (es. 123456789:AAH...). Copialo di nuovo da @BotFather.")
         }
-        when (val updates = transport.getUpdates(token)) {
+        when (val updates = updatesLock.withLock { transport.getUpdates(token) }) {
             is UpdatesResult.NetworkError -> ConnectResult.Error("Nessuna connessione con Telegram (${updates.message}). Controlla la rete e riprova.")
             is UpdatesResult.Failed -> ConnectResult.Error("Telegram ha rifiutato la richiesta: ${updates.description}")
             is UpdatesResult.Ok -> {
@@ -212,7 +216,10 @@ class TelegramNotifier(
                     ?: return@withContext ConnectResult.Error(
                         "Nessun messaggio trovato. Apri la chat del nuovo bot su Telegram, premi AVVIA (/start) e riprova entro qualche minuto."
                     )
-                connect(token, chat.id, chat)
+                connect(token, chat.id, chat).also {
+                    // I messaggi già presenti (il /start) non vanno eseguiti come comandi.
+                    if (it is ConnectResult.Connected) commands.offset = TelegramCommands.nextOffset(updates.body)
+                }
             }
         }
     }
@@ -225,11 +232,12 @@ class TelegramNotifier(
     }
 
     private fun connect(token: String, chatId: Long, chat: TelegramChat): ConnectResult =
-        when (val sent = transport.sendMessage(token, chatId, AlertPolicy.CONNECTED_MESSAGE)) {
+        when (val sent = transport.sendMessage(token, chatId, AlertPolicy.CONNECTED_MESSAGE + "\n\n" + TelegramCommands.HELP_TEXT)) {
             is SendResult.Ok -> {
                 config.saveConnection(token, chatId, chat.displayName)
                 _status.value = "Collegato: ${AlertPolicy.dateTime(System.currentTimeMillis(), zone)}"
                 flushSoon(0)
+                commands.start()
                 ConnectResult.Connected(chat)
             }
             is SendResult.RetryAfter -> ConnectResult.Error("Telegram chiede di attendere ${sent.seconds} s prima di riprovare.")
@@ -261,22 +269,65 @@ class TelegramNotifier(
         if (!s.ready || (!manual && !s.prefs.heartbeat)) return@withContext FlushOutcome.NotConfigured
         val app = context.applicationContext as SafeGuardApp
         val now = TrustedClock.now()
+        val d = deviceStatus()
+        val stats = AlertPolicy.HeartbeatStats(
+            vpnOk = d.protectionPaused || d.vpnOk, guardOk = d.guardOk, domains = d.domains, searches = d.searches,
+            settingsAttempts = d.settingsAttempts, lastListsUpdate = d.lastListsUpdate,
+        )
+        PowerHistory.markAlive(app)
+        queue.add(QueuedAlert(now, AlertPolicy.formatHeartbeat(stats, now, zone)))
+        flush()
+    }
+
+    /** Stato del telefono per il report giornaliero e il comando /stato. */
+    suspend fun deviceStatus(): TelegramCommands.DeviceStatus {
+        val app = context.applicationContext as SafeGuardApp
+        val now = TrustedClock.now()
         val totals = try {
             app.database.securityEventDao().totalsSince(now - 24 * 60 * 60_000L).associate { it.type to it.total }
         } catch (e: Exception) {
             emptyMap()
         }
-        val stats = AlertPolicy.HeartbeatStats(
-            vpnOk = !app.pinManager.protectionEnabled || DomainBlockerVpnService.running.value,
+        val battery = context.getSystemService(android.os.BatteryManager::class.java)
+        return TelegramCommands.DeviceStatus(
+            vpnOk = DomainBlockerVpnService.running.value,
+            protectionPaused = !app.pinManager.protectionEnabled,
             guardOk = SettingsGuardAccessibilityService.isEnabled(app),
+            uptimeMs = SystemClock.elapsedRealtime(),
+            batteryPercent = battery?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 },
+            charging = battery?.isCharging == true,
             domains = totals[EventType.DOMAIN] ?: 0,
             searches = totals[EventType.SEARCH] ?: 0,
             settingsAttempts = totals[EventType.TAMPER] ?: 0,
             lastListsUpdate = try { app.database.domainDao().lastSyncAt() } catch (e: Exception) { null },
+            pendingAlerts = queue.size(),
+            clockOffsetMs = TrustedClock.currentOffsetMs,
         )
-        PowerHistory.markAlive(app)
-        queue.add(QueuedAlert(now, AlertPolicy.formatHeartbeat(stats, now, zone)))
-        flush()
+    }
+
+    /** Aggiunge un messaggio già pronto alla coda e tenta l'invio. */
+    fun enqueue(alert: QueuedAlert) {
+        queue.add(alert)
+        flushSoon(0)
+    }
+
+    /**
+     * Avviso immediato scritto SUBITO su disco (fsync), senza passare dal registro: usato durante
+     * lo spegnimento. @return false se Telegram non è collegato o gli avvisi critici sono spenti.
+     */
+    fun enqueueImmediate(severity: String, type: String, title: String, detail: String, timestamp: Long): Boolean {
+        val s = config.snapshot
+        val channel = AlertPolicy.channelOf(type, title) ?: return false
+        if (!s.ready || !s.prefs.allows(channel)) return false
+        queue.add(QueuedAlert(timestamp, AlertPolicy.formatImmediate(severity, title, detail, timestamp, zone)))
+        return true
+    }
+
+    /** Invio sincrono della coda (thread chiamante): true se la coda è stata svuotata. */
+    fun flushBlocking(): Boolean {
+        val s = config.snapshot
+        if (!s.ready) return false
+        return dispatcher.flush(s.token, s.chatId) is FlushOutcome.Done && queue.size() == 0
     }
 
     fun clearQueue() = queue.clear()

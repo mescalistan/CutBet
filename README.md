@@ -101,7 +101,10 @@ app/src/main/
     │   ├── TelegramApi.kt         Bot API con HttpsURLConnection (sendMessage, getUpdates)
     │   ├── TelegramConfig.kt      Token e chat cifrati nello storage Direct Boot
     │   ├── AlertQueue.kt          Coda offline persistente e invio in ordine cronologico
-    │   └── AlertPolicy.kt         Livelli di dettaglio, testi, aggregazione dei blocchi
+    │   ├── AlertPolicy.kt         Livelli di dettaglio, testi, aggregazione dei blocchi
+    │   ├── TelegramCommands.kt    Parser dei comandi remoti, filtro per chat autorizzata, testi
+    │   └── TelegramCommandPoller.kt  getUpdates in long polling ed esecuzione dei comandi
+    ├── security/ShutdownRecorder.kt  Registrazione sincrona dello spegnimento (goAsync)
     └── ui/
         ├── MainActivity.kt        Onboarding → PIN → Dashboard
         ├── OnboardingScreen.kt    Wizard: PIN, banca, Telegram (facoltativo), permessi
@@ -214,6 +217,30 @@ Il collegamento automatico chiama `getUpdates`, prende la chat dell'ultimo `/sta
 - **Rate limit**: al massimo un messaggio al secondo; con HTTP 429 si rispetta `retry_after`. Token revocato o
   chat inesistente non svuotano la coda (massimo 300 avvisi, poi si tengono i più recenti).
 - Il token non compare mai nei log. Per sospendere: interruttore "Avvisi Telegram attivi" oppure "Scollega".
+- **Spegnimento** (`ACTION_SHUTDOWN`, `QUICKBOOT_POWEROFF`): il receiver resta aperto con `goAsync()` e lavora
+  in modo sincrono: flag e orario con `commit()` nello storage Direct Boot, avviso nella coda su disco con
+  `fsync`, poi in parallelo invio lampo a Telegram e riga nel Registro Allarmi, entro 1,5 secondi. Se il
+  telefono è offline l'avviso parte al riavvio; se la riga non è stata scritta in tempo, viene aggiunta al
+  `LOCKED_BOOT_COMPLETED` con l'orario originale e la durata dello spegnimento.
+
+### Comandi remoti del tutore
+
+Scrivendo nella chat del proprio bot il tutore può comandare SafeGuard a distanza. Sono accettati **solo** i
+messaggi della chat collegata (Chat ID salvato nelle preferenze cifrate): chi scrive al bot da un'altra chat
+viene ignorato e il suo Chat ID finisce nel Registro Allarmi. I messaggi modificati non vengono eseguiti.
+
+| Comando | Effetto |
+|---|---|
+| `/stato` (o `/report`) | Filtro VPN, Guardiano, tempo dall'ultimo riavvio, batteria, blocchi delle ultime 24 ore, liste, avvisi in coda, orologio manomesso |
+| `/ultimi` | Ultimi 10 eventi del Registro Allarmi |
+| `/blocca <dominio o parola>` | Con un punto è un dominio (e i suoi sottodomini), altrimenti una parola chiave: *"🚫 Bloccato: ..."* |
+| `/consenti <dominio>` | Aggiunge il dominio alla whitelist: *"✅ Consentito: ..."* |
+| `/aiuto` | Elenco dei comandi (inviato anche al collegamento del bot) |
+
+I comandi arrivano con `getUpdates` in long polling (una richiesta aperta fino a 50 secondi, risposta appena
+arriva un messaggio). L'`offset` dell'ultimo `update_id` è salvato su disco prima di eseguire il comando, quindi
+nessun comando viene eseguito due volte, nemmeno dopo un riavvio; al collegamento del bot l'offset parte dopo il
+`/start`. Ogni comando eseguito resta nel Registro Allarmi (filtro *Manomissione / SIM*).
 - **Report giornaliero (heartbeat)**, attivo di default: ogni 24 ore *"💓 SafeGuard Attivo · Protezione VPN e
   Guardiano: OK · Blocchi ultime 24h: X domini, Y ricerche, Z tentativi impostazioni · Liste aggiornate."*
   (pulsante "Report ora" per provarlo). **Se per più di 24 ore il messaggio 💓 non arriva, il telefono può essere
@@ -315,8 +342,13 @@ SafeGuard è un deterrente efficace, non una barriera assoluta. In particolare:
   automatico, aggregazione, coda offline con Wi-Fi e dati spenti, 429, report 💓, riavvio); con i server veri
   di Telegram solo fino alla risposta (token di prova rifiutato con 401): la consegna a un bot reale va
   provata con un token vero;
-- l'evento "Telefono spento o riavviato" scritto durante lo spegnimento non è garantito (Android può chiudere il
-  processo prima): la durata dello spegnimento si ricava comunque al riavvio dall'ultimo segnale di vita;
+- lo spegnimento è registrato solo quando passa dalla procedura di Android (tasto di accensione, menu, riavvio,
+  `svc power shutdown`), che invia `ACTION_SHUTDOWN`. Batteria tolta, batteria scarica improvvisa o spegnimento
+  forzato tenendo premuto il tasto non inviano nulla: in quel caso resta la durata calcolata al riavvio;
+- se il processo viene chiuso subito dopo un invio riuscito ma prima di aggiornare la coda, al riavvio lo stesso
+  avviso può arrivare due volte;
+- i comandi remoti tengono aperta una connessione verso Telegram (long polling): un consumo di dati e batteria
+  piccolo ma continuo, solo quando Telegram è collegato;
 - la Modalità Provvisoria non è rilevabile mentre è attiva (nessuna app di terze parti gira): la si deduce dal
   report 💓 mancante e dalla durata riportata al riavvio successivo;
 - le funzioni di schermo diviso e finestra flottante variano tra i produttori: verificato sull'emulatore

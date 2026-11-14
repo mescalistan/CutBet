@@ -26,9 +26,10 @@ object EventType {
     const val DOMAIN = "DOMAIN"         // dominio bloccato dal filtro DNS
     const val CONTENT = "CONTENT"       // pagina, video, post o pubblicità bloccati per i contenuti
     const val APP = "APP"               // app dedicata (trading, scommesse, prestiti) chiusa all'apertura
+    const val REMOTE = "REMOTE"         // comandi del tutore dal bot Telegram
 
     /** Filtro "Tentativi di manomissione / SIM". */
-    val TAMPER_GROUP = listOf(TAMPER, SIM, PIN, POWER, INTEGRITY, APP)
+    val TAMPER_GROUP = listOf(TAMPER, SIM, PIN, POWER, INTEGRITY, APP, REMOTE)
     val SEARCH_GROUP = listOf(SEARCH, CONTENT)
     val DOMAIN_GROUP = listOf(DOMAIN)
 }
@@ -54,6 +55,10 @@ data class TypeTotal(val type: String, val total: Int)
 
 @Dao
 interface SecurityEventDao {
+
+    /** Ultimi eventi (comando /ultimi). */
+    @Query("SELECT * FROM security_event_log ORDER BY lastAt DESC, id DESC LIMIT :limit")
+    fun latest(limit: Int): List<SecurityEventLog>
 
     /** Statistiche del report giornaliero: eventi per tipo dopo [since]. */
     @Query("SELECT type, SUM(count) AS total FROM security_event_log WHERE lastAt > :since GROUP BY type")

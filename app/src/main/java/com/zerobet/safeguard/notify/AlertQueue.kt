@@ -20,7 +20,11 @@ class AlertQueue(private val file: File, private val maxEntries: Int = MAX_ENTRI
     fun add(alert: QueuedAlert) {
         try {
             file.parentFile?.mkdirs()
-            file.appendText(encode(alert) + "\n", Charsets.UTF_8)
+            // fsync: l'avviso deve essere sul disco anche se il telefono si spegne subito dopo.
+            java.io.FileOutputStream(file, true).use { out ->
+                out.write((encode(alert) + "\n").toByteArray(Charsets.UTF_8))
+                out.fd.sync()
+            }
             if (countLines() > maxEntries) {
                 // Coda piena (es. token sbagliato per giorni): si tengono le voci più recenti.
                 write(readAll().takeLast(maxEntries))

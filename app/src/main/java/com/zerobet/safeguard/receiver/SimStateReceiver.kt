@@ -47,10 +47,20 @@ object SimStateTracker {
         else SimEvent("SIM inserita o riattivata", where)
     }
 
+    /**
+     * Cambio di operatore. Conta solo il codice MCC/MNC tra parentesi: subito dopo l'avvio il nome
+     * ("T-Mobile") può non essere ancora disponibile e venire sostituito dal codice, e non è un
+     * cambio di SIM.
+     */
     fun operatorEvent(previous: String?, current: String?): SimEvent? {
         if (previous.isNullOrBlank() || current.isNullOrBlank() || previous == current) return null
+        if (operatorCode(previous) == operatorCode(current)) return null
         return SimEvent("Operatore della SIM cambiato", "$previous → $current")
     }
+
+    /** "TIM (22201)" -> "22201"; senza parentesi, il testo intero. */
+    fun operatorCode(value: String): String =
+        value.substringAfterLast('(', value).substringBefore(')').trim()
 }
 
 /**

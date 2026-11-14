@@ -47,7 +47,7 @@ class TelegramNotifierTest {
             if (r is SendResult.Ok) sent += text
             return r
         }
-        override fun getUpdates(token: String) = updates
+        override fun getUpdates(token: String, offset: Long?, timeoutSec: Int) = updates
     }
 
     // ---------------------------------------------------------------------------------------

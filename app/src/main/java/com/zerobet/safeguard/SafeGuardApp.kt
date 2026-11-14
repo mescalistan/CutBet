@@ -14,7 +14,9 @@ import com.zerobet.safeguard.data.Severity
 import com.zerobet.safeguard.guard.IntegrityChecker
 import com.zerobet.safeguard.notify.HeartbeatWorker
 import com.zerobet.safeguard.notify.TelegramNotifier
+import com.zerobet.safeguard.receiver.ShutdownReceiver
 import com.zerobet.safeguard.security.PowerHistory
+import com.zerobet.safeguard.security.ShutdownRecorder
 import com.zerobet.safeguard.security.TrustedClock
 import com.zerobet.safeguard.receiver.SimStateReceiver
 import com.zerobet.safeguard.security.DeviceStorage
@@ -67,6 +69,7 @@ class SafeGuardApp : Application() {
             }
             try {
                 telegram.start()
+                telegram.commands.start()   // comandi remoti del tutore (long polling)
             } catch (e: Exception) {
                 Log.w("SafeGuardApp", "Avvisi Telegram non avviati: ${e.javaClass.simpleName}")
             }
@@ -99,6 +102,7 @@ class SafeGuardApp : Application() {
             addAction(Intent.ACTION_USER_UNLOCKED)
             addAction(Intent.ACTION_SHUTDOWN)
             addAction(Intent.ACTION_REBOOT)
+            addAction(ShutdownReceiver.ACTION_QUICKBOOT_POWEROFF)
             addAction(SimStateReceiver.ACTION_SIM_STATE_CHANGED)
         }
         val receiver = object : BroadcastReceiver() {
@@ -111,12 +115,9 @@ class SafeGuardApp : Application() {
                         onUserUnlocked()
                         IntegrityChecker.check(context, "sblocco schermo")
                     }
-                    Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT -> {
-                        // Scrittura sincrona: tra pochi istanti il processo verrà chiuso.
-                        PowerHistory.markShutdown(context)
-                        if (pinManager.onboardingDone) {
-                            securityLog.logNow(EventType.POWER, Severity.WARNING, "Telefono spento o riavviato", "Spegnimento richiesto")
-                        }
+                    Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT, ShutdownReceiver.ACTION_QUICKBOOT_POWEROFF -> {
+                        // Tra pochi istanti il processo verrà chiuso: scrittura sincrona dentro goAsync.
+                        ShutdownRecorder.onShutdown(this@SafeGuardApp, goAsync())
                     }
                     SimStateReceiver.ACTION_SIM_STATE_CHANGED -> sim.onReceive(context, intent)
                 }

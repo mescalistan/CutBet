@@ -258,6 +258,8 @@ class CorpusAndBenchmarkTest {
 
         assertNull(SimStateTracker.operatorEvent(null, "TIM (22201)"))
         assertNull(SimStateTracker.operatorEvent("TIM (22201)", "TIM (22201)"))
+        // Nome dell'operatore non ancora disponibile all'avvio: stessa SIM, nessun allarme.
+        assertNull(SimStateTracker.operatorEvent("T-Mobile (310260)", "310260 (310260)"))
         assertEquals("TIM (22201) → Iliad (22250)", SimStateTracker.operatorEvent("TIM (22201)", "Iliad (22250)")!!.detail)
     }
 

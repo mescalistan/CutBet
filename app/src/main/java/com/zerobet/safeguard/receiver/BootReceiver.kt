@@ -12,6 +12,7 @@ import com.zerobet.safeguard.guard.IntegrityChecker
 import com.zerobet.safeguard.security.ClockGuard
 import com.zerobet.safeguard.security.DeviceStorage
 import com.zerobet.safeguard.security.PowerHistory
+import com.zerobet.safeguard.security.ShutdownRecorder
 import com.zerobet.safeguard.vpn.DomainBlockerVpnService
 
 /**
@@ -52,6 +53,8 @@ class BootReceiver : BroadcastReceiver() {
                     )
                 }
             }
+            // Spegnimento precedente non registrato in tempo: si completa ora, con l'orario originale.
+            if (action != Intent.ACTION_MY_PACKAGE_REPLACED) ShutdownRecorder.onBoot(app)
             if (action != Intent.ACTION_LOCKED_BOOT_COMPLETED) app.onUserUnlocked()
 
             val pinManager = app.pinManager

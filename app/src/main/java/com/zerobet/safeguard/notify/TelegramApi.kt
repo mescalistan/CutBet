@@ -38,7 +38,8 @@ data class TelegramChat(val id: Long, val firstName: String, val username: Strin
 /** Le due chiamate dell'API dei bot usate da SafeGuard. */
 interface TelegramTransport {
     fun sendMessage(token: String, chatId: Long, text: String): SendResult
-    fun getUpdates(token: String): UpdatesResult
+    /** [offset]: primo update_id da restituire (conferma i precedenti); [timeoutSec] > 0 = long polling. */
+    fun getUpdates(token: String, offset: Long? = null, timeoutSec: Int = 0): UpdatesResult
 }
 
 /**
@@ -69,13 +70,20 @@ object TelegramApi : TelegramTransport {
         }
     }
 
-    override fun getUpdates(token: String): UpdatesResult =
-        when (val r = request(token, "getUpdates?limit=10", null)) {
+    override fun getUpdates(token: String, offset: Long?, timeoutSec: Int): UpdatesResult {
+        val query = buildString {
+            append("getUpdates?limit=").append(if (offset == null && timeoutSec == 0) 10 else 20)
+            if (offset != null) append("&offset=").append(offset)
+            if (timeoutSec > 0) append("&timeout=").append(timeoutSec).append("&allowed_updates=%5B%22message%22%5D")
+        }
+        val readTimeout = if (timeoutSec > 0) (timeoutSec + 15) * 1000 else READ_TIMEOUT_MS
+        return when (val r = request(token, query, null, readTimeout)) {
             is HttpResponse.Error -> UpdatesResult.NetworkError(r.message)
             is HttpResponse.Body ->
                 if (r.code == 200 && isOk(r.body)) UpdatesResult.Ok(r.body)
                 else UpdatesResult.Failed(r.code, describe(r.code, r.body))
         }
+    }
 
     // -------------------------------------------------------------------------------------------
     // Parsing (puro)
@@ -162,7 +170,7 @@ object TelegramApi : TelegramTransport {
         class Error(val message: String) : HttpResponse()
     }
 
-    private fun request(token: String, method: String, form: String?): HttpResponse {
+    private fun request(token: String, method: String, form: String?, readTimeoutMs: Int = READ_TIMEOUT_MS): HttpResponse {
         val connection = try {
             URL("${BuildConfig.TELEGRAM_API_BASE}/bot$token/$method").openConnection() as HttpURLConnection
         } catch (e: IOException) {
@@ -170,7 +178,7 @@ object TelegramApi : TelegramTransport {
         }
         return try {
             connection.connectTimeout = CONNECT_TIMEOUT_MS
-            connection.readTimeout = READ_TIMEOUT_MS
+            connection.readTimeout = readTimeoutMs
             connection.useCaches = false
             if (form != null) {
                 connection.requestMethod = "POST"
