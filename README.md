@@ -1,6 +1,6 @@
 # CutBet
 
-[![Android release](https://github.com/mescalistan/ZeroBet/actions/workflows/android-release.yml/badge.svg)](https://github.com/mescalistan/ZeroBet/actions/workflows/android-release.yml)
+[![Android release](https://github.com/mescalistan/CutBet/actions/workflows/android-release.yml/badge.svg)](https://github.com/mescalistan/CutBet/actions/workflows/android-release.yml)
 
 App Android nativa (Kotlin, Jetpack Compose, Room) che aiuta le persone con problemi di gioco
 compulsivo bloccando l'accesso a siti di **scommesse/casinò**, **trading/crypto** e
@@ -72,13 +72,14 @@ da quella di debug: per passare dall'una all'altra sullo stesso telefono va prim
 5. verifica delle firme con `apksigner` (APK) e `jarsigner` (AAB);
 6. artefatti del workflow e **GitHub Release** `v<versione>` con `CutBet-release.apk` / `CutBet-release.aab`
    (più le copie con il numero di versione). Il link
-   `https://github.com/mescalistan/ZeroBet/releases/latest/download/CutBet-release.apk` scarica sempre
-   l'ultima versione. Con un push su `main` la Release della versione corrente viene aggiornata; per una
+   `https://github.com/mescalistan/CutBet/releases/latest/download/CutBet-release.apk` (e `.aab`) scarica
+   sempre l'ultima versione. Con un push su `main` la Release della versione corrente viene aggiornata; per una
    nuova Release si aumenta `versionName` (o si spinge un tag `v*`).
 
 Senza i segreti il workflow esegue comunque i test e mostra l'avviso *"Firma saltata"*.
 
-**Configurare i segreti** (una volta): con la GitHub CLI installata e autenticata
+I quattro segreti sono già configurati nel repository. **Per ricaricarli** (es. nuovo keystore): con la
+GitHub CLI installata e autenticata
 (`winget install GitHub.cli`, `gh auth login`):
 
 ```powershell
