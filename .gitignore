@@ -22,3 +22,5 @@ keystore.properties
 
 # APK pronti da condividere
 dist/
+# Artefatti scaricati dalle GitHub Actions
+CutBet-*.zip
