@@ -44,7 +44,7 @@ object TelegramCommands {
         val trimmed = text.trim()
         if (!trimmed.startsWith("/") || trimmed.length < 2) return null
         val head = trimmed.substringBefore(' ').substringBefore('\n')
-        // "/stato@MioSafeGuard_bot": il nome del bot dopo la @ si ignora.
+        // "/stato@MioCutBet_bot": il nome del bot dopo la @ si ignora.
         val name = head.drop(1).substringBefore('@').lowercase()
         val argument = trimmed.drop(head.length).trim().take(MAX_ARGUMENT)
         return when (name) {
@@ -124,7 +124,7 @@ object TelegramCommands {
     )
 
     fun formatStatus(s: DeviceStatus, now: Long, zone: ZoneId): String = buildString {
-        append("📊 Stato di SafeGuard\n")
+        append("📊 Stato di CutBet\n")
         append("🛡 Filtro VPN: ").append(
             when {
                 s.protectionPaused -> "IN PAUSA (dal tutore)"

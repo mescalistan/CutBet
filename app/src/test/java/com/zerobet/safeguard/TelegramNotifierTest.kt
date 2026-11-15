@@ -137,7 +137,7 @@ class TelegramNotifierTest {
     fun `testo dell'avviso critico con orario esatto`() {
         val ts = java.time.ZonedDateTime.of(2026, 11, 14, 22, 31, 5, 0, zone).toInstant().toEpochMilli()
         val text = AlertPolicy.formatImmediate(Severity.CRITICAL, "SIM rimossa dal dispositivo", "Slot SIM 1", ts, zone)
-        assertTrue(text.startsWith("🚨 SafeGuard · ALLARME CRITICO"))
+        assertTrue(text.startsWith("🚨 CutBet · ALLARME CRITICO"))
         assertTrue(text.contains("SIM rimossa dal dispositivo\nSlot SIM 1"))
         assertTrue(text.contains("14/11/2026 22:31:05"))
         assertTrue(AlertPolicy.formatImmediate(Severity.WARNING, "PIN errato", "", ts, zone).startsWith("⚠️"))

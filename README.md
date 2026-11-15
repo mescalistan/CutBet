@@ -1,4 +1,6 @@
-# SafeGuard (ZeroBet)
+# CutBet
+
+[![Android release](https://github.com/mescalistan/ZeroBet/actions/workflows/android-release.yml/badge.svg)](https://github.com/mescalistan/ZeroBet/actions/workflows/android-release.yml)
 
 App Android nativa (Kotlin, Jetpack Compose, Room) che aiuta le persone con problemi di gioco
 compulsivo bloccando l'accesso a siti di **scommesse/casinò**, **trading/crypto** e
@@ -40,8 +42,8 @@ keyPassword=...
 
 `keystore.properties` e la cartella `keystore/` sono esclusi da git: **conservane una copia sicura**, perché
 senza quel keystore non si possono più pubblicare aggiornamenti della stessa app. In alternativa (es. CI)
-si possono usare le variabili d'ambiente `SAFEGUARD_STORE_FILE`, `SAFEGUARD_STORE_PASSWORD`,
-`SAFEGUARD_KEY_ALIAS`, `SAFEGUARD_KEY_PASSWORD`; senza nessuna delle due la release esce non firmata.
+si possono usare le variabili d'ambiente `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`,
+`SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`; senza nessuna delle due la release esce non firmata.
 
 ```bash
 ./gradlew assembleRelease
@@ -51,10 +53,50 @@ si possono usare le variabili d'ambiente `SAFEGUARD_STORE_FILE`, `SAFEGUARD_STOR
 ./gradlew bundleRelease
 ```
 
-Uscite: `app/build/outputs/apk/release/app-release.apk` (installazione diretta, circa 1,5 MB) e
-`app/build/outputs/bundle/release/app-release.aab` (Play Store). La build di release usa una firma diversa
+Uscite: `app/build/outputs/apk/release/CutBet-v<versione>-release.apk` (installazione diretta, circa 1,5 MB)
+e `app/build/outputs/bundle/release/CutBet-v<versione>-release.aab` (Play Store). La build di release usa una firma diversa
 da quella di debug: per passare dall'una all'altra sullo stesso telefono va prima disinstallata l'app
 ("Sblocca Disinstallazione" dalla dashboard).
+
+### Build automatica con GitHub Actions
+
+`.github/workflows/android-release.yml` parte a ogni push su `main`, a ogni tag `v*` e a mano
+(*Actions → Android release → Run workflow*):
+
+1. JDK 17 (Temurin) e cache di Gradle;
+2. `./gradlew testDebugUnitTest`: se un test fallisce la build si ferma;
+3. il keystore (segreto `SIGNING_KEYSTORE_BASE64`) viene decodificato in `/tmp/release-keystore.jks`, fuori
+   dal repository, e cancellato a fine job in ogni caso;
+4. `assembleRelease bundleRelease` con `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`,
+   `SIGNING_KEY_PASSWORD`;
+5. verifica delle firme con `apksigner` (APK) e `jarsigner` (AAB);
+6. artefatti del workflow e **GitHub Release** `v<versione>` con `CutBet-release.apk` / `CutBet-release.aab`
+   (più le copie con il numero di versione). Il link
+   `https://github.com/mescalistan/ZeroBet/releases/latest/download/CutBet-release.apk` scarica sempre
+   l'ultima versione. Con un push su `main` la Release della versione corrente viene aggiornata; per una
+   nuova Release si aumenta `versionName` (o si spinge un tag `v*`).
+
+Senza i segreti il workflow esegue comunque i test e mostra l'avviso *"Firma saltata"*.
+
+**Configurare i segreti** (una volta): con la GitHub CLI installata e autenticata
+(`winget install GitHub.cli`, `gh auth login`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\upload-secrets.ps1
+```
+
+Lo script legge `keystore.properties` e il keystore, li passa a `gh secret set` dallo standard input (non
+compaiono a schermo né nella riga di comando) e, con `-RenameTo CutBet`, rinomina anche il repository e
+aggiorna il remote `origin`.
+
+### Identificativo dell'app
+
+Il nome visibile è **CutBet**; l'`applicationId` resta `com.zerobet.safeguard` (come il package del codice).
+Android riconosce un'app da `applicationId` e firma: mantenendoli, la 1.4.0 si installa come aggiornamento
+sopra le versioni precedenti senza perdere amministratore dispositivo, accessibilità, consenso VPN, PIN e
+registro. L'identificativo non è visibile all'utente (compare solo nell'indirizzo della scheda Play Store).
+Se si vuole `com.cutbet.app`, va cambiato **prima della prima pubblicazione sul Play Store** (dopo non è
+più possibile) e richiede di disinstallare e riconfigurare l'app sui telefoni già protetti.
 
 ## Struttura del progetto
 
@@ -145,7 +187,7 @@ con ricerca binaria: match esatto, poi match sui domini padre (una ricerca per l
 | **Bypass di sistema** | PIN del tutore anche per: installazione manuale di APK (dialogo del package installer e pagina "Installa app sconosciute"), utenti multipli / ospite / secondo spazio / spazio privato / app clonate, opzioni sviluppatore e debug wireless (compresa la loro attivazione con i tocchi su "Numero build"), opzioni di ripristino (rete, preferenze app, dati di fabbrica, "Cancella tutti i dati"), **Data e ora**, app clonate / gemelle / parallele / Dual Messenger. Per le pagine delle Impostazioni conta solo il titolo: la pagina "Sistema", che elenca queste voci, resta libera. |
 | **Schermo diviso e finestre flottanti** | `MainActivity` e `LockScreenActivity` hanno `resizeableActivity="false"`. Se un'Impostazione protetta viene aperta in schermo diviso, finestra flottante o PiP, il Guardiano torna prima alla Home (chiude lo schermo diviso), poi apre il PIN a tutto schermo e registra l'evento come critico. |
 | **Manomissione di data/ora** | `TimeChangeReceiver` (`TIME_SET`, `TIMEZONE_CHANGED`) confronta la nuova ora con quella attesa dal tempo monotòno (`elapsedRealtime`): uno scarto oltre 5 minuti è un evento CRITICAL *"Manomissione data/ora di sistema rilevata"* (anche a telefono spento, se al riavvio l'ora è precedente all'ultima ora attendibile). Registro e avvisi usano l'ora attendibile; il blocco per PIN errati e la finestra anti-429 usano il tempo monotòno, quindi spostare l'orologio non li accorcia. |
-| **Modalità Discreta** | Nella dashboard, "Aspetto App nella Home": tre `<activity-alias>` della stessa Activity, uno solo abilitato con `setComponentEnabledSetting(..., DONT_KILL_APP)`: *SafeGuard* (scudo), *Servizi di Rete* (ingranaggio), *Gestione Batteria* (batteria). La protezione non si interrompe. |
+| **Modalità Discreta** | Nella dashboard, "Aspetto App nella Home": tre `<activity-alias>` della stessa Activity, uno solo abilitato con `setComponentEnabledSetting(..., DONT_KILL_APP)`: *CutBet* (scudo), *Servizi di Rete* (ingranaggio), *Gestione Batteria* (batteria). La protezione non si interrompe. |
 | **DNS privato** | Il Guardiano chiede il PIN sul dialogo "DNS privato" delle Impostazioni; la dashboard avvisa se è impostato un provider. |
 
 Le voci delle liste esterne già coperte da parole chiave o euristica non vengono salvate (su circa
@@ -193,11 +235,11 @@ nell'onboarding (passo facoltativo) o in qualsiasi momento dalla scheda **Notifi
 dashboard, dietro PIN, con una guida in tre passi:
 
 1. sul telefono del tutore, in Telegram, cercare **@BotFather** (badge blu), premere Avvia e inviare `/newbot`;
-2. scegliere un nome e uno username che finisca per `bot`, copiare il **Token HTTP API** e incollarlo in SafeGuard;
+2. scegliere un nome e uno username che finisca per `bot`, copiare il **Token HTTP API** e incollarlo in CutBet;
 3. aprire la chat del nuovo bot, premere **AVVIA** (`/start`) e toccare **Collega Automaticamente e Invia Test**.
 
 Il collegamento automatico chiama `getUpdates`, prende la chat dell'ultimo `/start`, invia
-*"✅ SafeGuard collegato correttamente! Riceverai qui gli avvisi di sicurezza."* e mostra
+*"✅ CutBet collegato correttamente! Riceverai qui gli avvisi di sicurezza."* e mostra
 "Collegato a: Nome (ID: …)". Chi conosce già il proprio Chat ID può inserirlo a mano (sezione avanzata).
 
 | Livello (interruttore) | Eventi | Invio |
@@ -225,7 +267,7 @@ Il collegamento automatico chiama `getUpdates`, prende la chat dell'ultimo `/sta
 
 ### Comandi remoti del tutore
 
-Scrivendo nella chat del proprio bot il tutore può comandare SafeGuard a distanza. Sono accettati **solo** i
+Scrivendo nella chat del proprio bot il tutore può comandare CutBet a distanza. Sono accettati **solo** i
 messaggi della chat collegata (Chat ID salvato nelle preferenze cifrate): chi scrive al bot da un'altra chat
 viene ignorato e il suo Chat ID finisce nel Registro Allarmi. I messaggi modificati non vengono eseguiti.
 
@@ -246,7 +288,7 @@ nessun comando viene eseguito due volte, nemmeno dopo un riavvio; al collegament
 avviso critico, il long polling resta reattivo (risposta in meno di un secondo). Con lo schermo spento da oltre
 5 minuti c'è una richiesta breve ogni 90 secondi, senza connessione tenuta aperta: un comando arriva con al
 massimo 90 secondi di ritardo. La pausa si interrompe subito all'accensione dello schermo o a un nuovo allarme.
-- **Report giornaliero (heartbeat)**, attivo di default: ogni 24 ore *"💓 SafeGuard Attivo · Protezione VPN e
+- **Report giornaliero (heartbeat)**, attivo di default: ogni 24 ore *"💓 CutBet Attivo · Protezione VPN e
   Guardiano: OK · Blocchi ultime 24h: X domini, Y ricerche, Z tentativi impostazioni · Liste aggiornate."*
   (pulsante "Report ora" per provarlo). **Se per più di 24 ore il messaggio 💓 non arriva, il telefono può essere
   spento, in Modalità Provvisoria (dove nessuna app di terze parti gira) o disconnesso.**
@@ -309,14 +351,14 @@ sviluppo è impostato un PIN di prova, salvato in `emulator-test-pin.txt` (esclu
 
 ## Configurazione consigliata sul telefono
 
-- **Impostazioni → Rete → VPN → SafeGuard → "VPN sempre attiva"**: il sistema riavvia da solo il filtro.
+- **Impostazioni → Rete → VPN → CutBet → "VPN sempre attiva"**: il sistema riavvia da solo il filtro.
 - **DNS privato** su *Disattivato* o *Automatico*: con un provider DoT impostato a mano le query non
   passano dalla porta 53 e il filtro viene aggirato.
-- Escludere SafeGuard dall'ottimizzazione batteria sui dispositivi con gestione aggressiva (Xiaomi, Huawei…).
+- Escludere CutBet dall'ottimizzazione batteria sui dispositivi con gestione aggressiva (Xiaomi, Huawei…).
 
 ## Limiti noti
 
-SafeGuard è un deterrente efficace, non una barriera assoluta. In particolare:
+CutBet è un deterrente efficace, non una barriera assoluta. In particolare:
 
 - un browser con **DNS-over-HTTPS** configurato per indirizzo IP (o verso un resolver non in lista), un'altra app VPN
   o un proxy aggirano il filtro DNS;
@@ -354,7 +396,7 @@ SafeGuard è un deterrente efficace, non una barriera assoluta. In particolare:
   avviso può arrivare due volte;
 - i comandi remoti tengono aperta una connessione verso Telegram (long polling) solo a schermo acceso; a schermo
   spento da oltre 5 minuti fanno una richiesta breve ogni 90 secondi;
-- nei primi 45 secondi dall'accensione (o 15 secondi dopo LOCKED_BOOT_COMPLETED / BOOT_COMPLETED) un filtro VPN
+- nei primi 45 secondi dall'accensione (o 20 secondi dopo LOCKED_BOOT_COMPLETED / BOOT_COMPLETED) un filtro VPN
   trovato spento viene riavviato senza allarme (`BootWindow`): è il normale avvio del servizio. Gli stessi
   broadcast arrivano anche dopo un arresto forzato dell'app, che però è già segnalato come manomissione critica;
 - la Modalità Provvisoria non è rilevabile mentre è attiva (nessuna app di terze parti gira): la si deduce dal
@@ -365,8 +407,8 @@ SafeGuard è un deterrente efficace, non una barriera assoluta. In particolare:
   "Debug wireless" dalla ricerca delle Impostazioni). Anche la loro attivazione è protetta: finché sono spente,
   il primo tocco su "Numero build" (o "Versione MIUI/HyperOS") chiede il PIN e interrompe il conteggio dei 7
   tocchi; la pagina "Info telefono" resta consultabile. Disattivarle spegne anche il debug USB (adb);
-- su Android recenti un "arresto forzato" di SafeGuard disattiva il servizio di accessibilità e fa ripartire l'app
-  con i broadcast di avvio: viene registrato come manomissione critica ("SafeGuard è stato arrestato
+- su Android recenti un "arresto forzato" di CutBet disattiva il servizio di accessibilità e fa ripartire l'app
+  con i broadcast di avvio: viene registrato come manomissione critica ("CutBet è stato arrestato
   forzatamente") e il controllo di integrità chiede di riattivare il Guardiano;
 - l'elenco delle app dedicate non può essere completo: quelle non in elenco sono riconosciute solo se il nome del
   package o dell'app contiene una parola a rischio;

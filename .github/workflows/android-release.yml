@@ -1,0 +1,130 @@
+# CutBet: test, build firmata (APK + AAB), verifica delle firme e GitHub Release.
+#
+# Segreti richiesti (Settings → Secrets and variables → Actions, oppure scripts/upload-secrets.ps1):
+#   SIGNING_KEYSTORE_BASE64   keystore di release in Base64 (una sola riga)
+#   SIGNING_STORE_PASSWORD    password del keystore
+#   SIGNING_KEY_ALIAS         alias della chiave
+#   SIGNING_KEY_PASSWORD      password della chiave
+# Senza segreti il workflow esegue comunque i test e segnala con un avviso che la build firmata è saltata.
+
+name: Android release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # creazione/aggiornamento della GitHub Release
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HAS_SIGNING: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' && secrets.SIGNING_STORE_PASSWORD != '' }}
+      KEYSTORE_PATH: /tmp/release-keystore.jks
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle (con cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Versione
+        id: version
+        run: |
+          chmod +x gradlew
+          name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Versione: $name"
+
+      - name: Unit test
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Segreti di firma mancanti
+        if: env.HAS_SIGNING != 'true'
+        run: echo "::warning title=Firma saltata::Segreti SIGNING_* non configurati: test eseguiti, APK/AAB firmati e Release non prodotti. Vedi scripts/upload-secrets.ps1."
+
+      - name: Decodifica del keystore (fuori dal repository)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+
+      - name: Build firmati (APK + AAB)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          SIGNING_STORE_FILE: ${{ env.KEYSTORE_PATH }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
+
+      - name: Verifica delle firme
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          V="${{ steps.version.outputs.name }}"
+          APK="app/build/outputs/apk/release/CutBet-v$V-release.apk"
+          AAB="app/build/outputs/bundle/release/CutBet-v$V-release.aab"
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | grep -E "Verified using v2|Signer #1 certificate (DN|SHA-256)"
+          jarsigner -verify "$AAB" | tee /tmp/jarsigner.txt
+          grep -q "jar verified." /tmp/jarsigner.txt
+
+      - name: Pacchetti da pubblicare
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          V="${{ steps.version.outputs.name }}"
+          mkdir -p dist
+          cp "app/build/outputs/apk/release/CutBet-v$V-release.apk" dist/
+          cp "app/build/outputs/bundle/release/CutBet-v$V-release.aab" dist/
+          # Nomi fissi: il link .../releases/latest/download/CutBet-release.apk resta sempre valido.
+          cp "dist/CutBet-v$V-release.apk" dist/CutBet-release.apk
+          cp "dist/CutBet-v$V-release.aab" dist/CutBet-release.aab
+          ls -la dist
+
+      - name: Artefatti del workflow
+        if: env.HAS_SIGNING == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CutBet-v${{ steps.version.outputs.name }}-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: GitHub Release
+        if: env.HAS_SIGNING == 'true' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          # Tag v* spinto a mano: la sua Release. Push su main: Release della versione corrente
+          # (v<versionName>), aggiornata a ogni push finché la versione non cambia.
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.version.outputs.name) }}
+          name: CutBet v${{ steps.version.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          make_latest: "true"
+          body: |
+            CutBet v${{ steps.version.outputs.name }}, build automatica del commit ${{ github.sha }}.
+
+            - **CutBet-release.apk**: da installare direttamente sul telefono.
+            - **CutBet-release.aab**: per il Play Store.
+            Firmati con il keystore di release; le versioni con numero (CutBet-v…) sono identiche.
+          files: dist/*
+
+      - name: Pulizia del keystore
+        if: always()
+        run: rm -f "$KEYSTORE_PATH" /tmp/jarsigner.txt

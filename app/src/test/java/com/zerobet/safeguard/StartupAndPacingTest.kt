@@ -16,9 +16,9 @@ class StartupAndPacingTest {
         assertTrue(BootWindow.isBootPhase(elapsedNow = 20_000, bootBroadcastAt = null))   // 20 s dall'accensione
         assertTrue(BootWindow.isBootPhase(44_999, null))
         assertFalse(BootWindow.isBootPhase(45_000, null))
-        // Telefono lento: BOOT_COMPLETED arriva dopo 60 s, la finestra dura altri 15 s.
-        assertTrue(BootWindow.isBootPhase(70_000, bootBroadcastAt = 60_000))
-        assertFalse(BootWindow.isBootPhase(75_000, bootBroadcastAt = 60_000))
+        // Telefono lento: BOOT_COMPLETED arriva dopo 60 s, la finestra dura altri 20 s.
+        assertTrue(BootWindow.isBootPhase(79_999, bootBroadcastAt = 60_000))
+        assertFalse(BootWindow.isBootPhase(80_000, bootBroadcastAt = 60_000))
         // Ore dopo l'avvio, filtro spento: è una manomissione, va segnalata.
         assertFalse(BootWindow.isBootPhase(3 * 60 * min, bootBroadcastAt = 30_000))
         assertFalse(BootWindow.isBootPhase(3 * 60 * min, bootBroadcastAt = null))

@@ -214,7 +214,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             return when (it) {
                 "DeviceAdmin" -> "Amministratore dispositivo"
                 "VpnSettings" -> "Impostazioni VPN"
-                else -> "Disinstallazione di SafeGuard"
+                else -> "Disinstallazione di CutBet"
             }
         }
 
@@ -232,7 +232,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         // Tutte le altre schermate sensibili mostrano il nome dell'app insieme a un'azione
         // o a un contesto pericoloso. Il solo nome (es. nell'elenco generale delle app) non basta.
         if (!screen.contains(appLabel)) return null
-        // La pagina generale "Rete e Internet" mostra la riga "VPN · SafeGuard" accanto a Wi-Fi,
+        // La pagina generale "Rete e Internet" mostra la riga "VPN · CutBet" accanto a Wi-Fi,
         // hotspot, ecc.: lì "vpn" non conta, altrimenti l'utente non potrebbe più cambiare rete.
         // Restano protetti la pagina VPN vera e propria e il dialogo del DNS privato.
         val isNetworkDashboard = NETWORK_DASHBOARD_HINTS.any { screen.contains(it) }
@@ -241,10 +241,10 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         } ?: return null
         return when {
             context == "vpn" -> "Impostazioni VPN"
-            context.startsWith("accessibilit") -> "Accessibilità di SafeGuard"
+            context.startsWith("accessibilit") -> "Accessibilità di CutBet"
             context == "disattiva" || context == "deactivate" -> "Amministratore dispositivo"
-            context.contains("install") -> "Disinstallazione di SafeGuard"
-            else -> "Info app di SafeGuard ($context)"
+            context.contains("install") -> "Disinstallazione di CutBet"
+            else -> "Info app di CutBet ($context)"
         }
     }
 
@@ -577,7 +577,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         )
         performGlobalAction(if (stillThere) GLOBAL_ACTION_HOME else GLOBAL_ACTION_BACK)
         if (!stillThere) handler.postDelayed({ scheduleScan(pkg, SystemClock.elapsedRealtime(), immediate = true) }, 400)
-        Toast.makeText(this, "SafeGuard: ricerca bloccata (${hit.category.label})", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "CutBet: ricerca bloccata (${hit.category.label})", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -608,7 +608,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             else -> performGlobalAction(GLOBAL_ACTION_BACK)
         }
         handler.postDelayed({ scheduleScan(pkg, SystemClock.elapsedRealtime(), immediate = true) }, 600)
-        Toast.makeText(this, "SafeGuard: $title", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "CutBet: $title", Toast.LENGTH_SHORT).show()
     }
 
     /** Scorrimento rapido verso l'alto: fa uscire dallo schermo l'annuncio o il video del feed. */
@@ -716,7 +716,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         performGlobalAction(GLOBAL_ACTION_BACK)
         handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 250)
         handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_HOME) }, 500)
-        Toast.makeText(this, "SafeGuard: ricerca bloccata (${hit.category.label})", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "CutBet: ricerca bloccata (${hit.category.label})", Toast.LENGTH_SHORT).show()
     }
 
     /** Dominio mostrato nella barra degli indirizzi, o null se non leggibile o in fase di digitazione. */
@@ -741,7 +741,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             "Pagina bloccata per i contenuti", if (where.isEmpty()) reason else "$where · $reason"
         )
         performGlobalAction(if (repeated) GLOBAL_ACTION_HOME else GLOBAL_ACTION_BACK)
-        Toast.makeText(this, "SafeGuard: contenuto bloccato ($reason)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "CutBet: contenuto bloccato ($reason)", Toast.LENGTH_SHORT).show()
     }
 
     // ---------------------------------------------------------------------------------------

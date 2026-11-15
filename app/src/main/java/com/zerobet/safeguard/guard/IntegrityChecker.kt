@@ -135,7 +135,7 @@ object IntegrityChecker {
                 NOTIFICATION_ID,
                 NotificationCompat.Builder(app, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_shield)
-                    .setContentTitle("SafeGuard: protezione disattivata")
+                    .setContentTitle("CutBet: protezione disattivata")
                     .setContentText("Tocca per riattivare il servizio obbligatorio.")
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_ALARM)

@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 object AppDisguise {
 
     enum class Appearance(val alias: String, val homeLabel: String, val title: String) {
-        DEFAULT(".LauncherDefault", "SafeGuard", "Predefinito: \"SafeGuard\" (icona scudo)"),
+        DEFAULT(".LauncherDefault", "CutBet", "Predefinito (CutBet) · icona scudo"),
         NETWORK(".LauncherNetwork", "Servizi di Rete", "Discreto - Sistema: \"Servizi di Rete\" (icona ingranaggio)"),
         BATTERY(".LauncherBattery", "Gestione Batteria", "Discreto - Utility: \"Gestione Batteria\" (icona batteria)"),
     }

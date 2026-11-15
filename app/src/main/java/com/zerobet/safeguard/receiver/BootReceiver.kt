@@ -51,7 +51,7 @@ class BootReceiver : BroadcastReceiver() {
                     )
                 } else {
                     app.securityLog.critical(
-                        EventType.TAMPER, "SafeGuard è stato arrestato forzatamente",
+                        EventType.TAMPER, "CutBet è stato arrestato forzatamente",
                         "L'app è ripartita da sola; telefono acceso da $upMinutes minuti"
                     )
                 }

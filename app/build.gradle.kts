@@ -8,21 +8,31 @@ plugins {
 }
 
 /**
- * Firma di release: keystore.properties (LOCALE, escluso da git) nella radice del progetto, con
- * storeFile, storePassword, keyAlias, keyPassword. In alternativa le variabili d'ambiente
- * SAFEGUARD_STORE_FILE, SAFEGUARD_STORE_PASSWORD, SAFEGUARD_KEY_ALIAS, SAFEGUARD_KEY_PASSWORD
- * (es. in CI). Senza nessuna delle due la release viene prodotta non firmata.
+ * Firma di release ibrida:
+ *  - in locale: keystore.properties (escluso da git) nella radice del progetto, con storeFile,
+ *    storePassword, keyAlias, keyPassword;
+ *  - in CI (GitHub Actions): variabili d'ambiente SIGNING_STORE_FILE, SIGNING_STORE_PASSWORD,
+ *    SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD (il keystore viene decodificato fuori dal repository).
+ * Il file locale ha la precedenza. Senza nessuno dei due la release viene prodotta non firmata.
  */
 val releaseSigning: Map<String, String>? = run {
     val file = rootProject.file("keystore.properties")
-    val props = Properties().apply { if (file.exists()) file.inputStream().use { load(it) } }
-    fun value(key: String, env: String) = props.getProperty(key) ?: System.getenv(env)
-    val storeFile = value("storeFile", "SAFEGUARD_STORE_FILE") ?: return@run null
+    if (file.exists()) {
+        val props = Properties().apply { file.inputStream().use { load(it) } }
+        val storeFile = props.getProperty("storeFile") ?: return@run null
+        return@run mapOf(
+            "storeFile" to rootProject.file(storeFile).absolutePath,
+            "storePassword" to props.getProperty("storePassword", ""),
+            "keyAlias" to props.getProperty("keyAlias", "safeguard"),
+            "keyPassword" to props.getProperty("keyPassword", ""),
+        )
+    }
+    val storeFile = System.getenv("SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() } ?: return@run null
     mapOf(
         "storeFile" to storeFile,
-        "storePassword" to (value("storePassword", "SAFEGUARD_STORE_PASSWORD") ?: ""),
-        "keyAlias" to (value("keyAlias", "SAFEGUARD_KEY_ALIAS") ?: "safeguard"),
-        "keyPassword" to (value("keyPassword", "SAFEGUARD_KEY_PASSWORD") ?: ""),
+        "storePassword" to (System.getenv("SIGNING_STORE_PASSWORD") ?: ""),
+        "keyAlias" to (System.getenv("SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "safeguard"),
+        "keyPassword" to (System.getenv("SIGNING_KEY_PASSWORD") ?: ""),
     )
 }
 
@@ -34,8 +44,8 @@ android {
         applicationId = "com.zerobet.safeguard"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.3.1"
+        versionCode = 6
+        versionName = "1.4.0"
 
         // URL dell'API dei bot Telegram. Solo per le prove con un server finto locale:
         // ./gradlew assembleRelease -PtelegramApiBase=http://127.0.0.1:8081 (abilita anche HTTP in chiaro).
@@ -47,7 +57,7 @@ android {
     signingConfigs {
         if (releaseSigning != null) {
             create("release") {
-                storeFile = rootProject.file(releaseSigning.getValue("storeFile"))
+                storeFile = file(releaseSigning.getValue("storeFile"))
                 storePassword = releaseSigning.getValue("storePassword")
                 keyAlias = releaseSigning.getValue("keyAlias")
                 keyPassword = releaseSigning.getValue("keyPassword")
@@ -81,6 +91,11 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+}
+
+// Nome dei pacchetti generati: CutBet-v<versione>-release.apk / .aab (e -debug.apk).
+base {
+    archivesName.set("CutBet-v${android.defaultConfig.versionName}")
 }
 
 dependencies {

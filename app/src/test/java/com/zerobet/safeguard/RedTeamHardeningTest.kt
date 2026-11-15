@@ -113,7 +113,7 @@ class RedTeamHardeningTest {
             AlertPolicy.HeartbeatStats(true, true, domains = 120, searches = 3, settingsAttempts = 1, lastListsUpdate = now - hour),
             now, zone
         )
-        assertTrue(text.startsWith("💓 SafeGuard Attivo · Protezione VPN e Guardiano: OK"))
+        assertTrue(text.startsWith("💓 CutBet Attivo · Protezione VPN e Guardiano: OK"))
         assertTrue(text.contains("Blocchi ultime 24h: 120 domini, 3 ricerche, 1 tentativo impostazioni"))
         assertTrue(text.contains("Liste aggiornate."))
         assertTrue(text.contains("14/11/2026 09:00:00"))
@@ -125,7 +125,7 @@ class RedTeamHardeningTest {
         val text = AlertPolicy.formatHeartbeat(
             AlertPolicy.HeartbeatStats(false, true, 0, 0, 5, lastListsUpdate = now - 5 * day), now, zone
         )
-        assertTrue(text.startsWith("⚠️ SafeGuard attivo ma INCOMPLETO"))
+        assertTrue(text.startsWith("⚠️ CutBet attivo ma INCOMPLETO"))
         assertTrue(text.contains("VPN SPENTA"))
         assertTrue(text.contains("5 tentativi impostazioni"))
         assertTrue(text.contains("Liste NON aggiornate dal 09/11/2026"))

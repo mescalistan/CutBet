@@ -71,8 +71,8 @@ class LockScreenActivity : ComponentActivity() {
                         val issue = problem?.takeIf { blockedApp == null }
                         if (issue != null) {
                             Text(
-                                if (issue == IntegrityChecker.PROBLEM_VPN) "Il filtro di rete di SafeGuard è stato spento."
-                                else "Il Guardiano di SafeGuard è stato disattivato.",
+                                if (issue == IntegrityChecker.PROBLEM_VPN) "Il filtro di rete di CutBet è stato spento."
+                                else "Il Guardiano di CutBet è stato disattivato.",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.error
                             )
@@ -96,9 +96,9 @@ class LockScreenActivity : ComponentActivity() {
                         PinVerify(
                             pinManager = pinManager,
                             title = if (blockedApp != null) "App non consentita" else if (issue != null) "Protezione disattivata" else "Impostazione protetta",
-                            subtitle = if (blockedApp != null) "$blockedApp è bloccata da SafeGuard.\nSolo il tutore può aprirla, con il PIN."
+                            subtitle = if (blockedApp != null) "$blockedApp è bloccata da CutBet.\nSolo il tutore può aprirla, con il PIN."
                             else if (issue != null) "Riattiva il servizio qui sopra per continuare a usare il telefono,\noppure inserisci il PIN del tutore."
-                            else "Questa sezione può disattivare SafeGuard.\nÈ richiesto il PIN del tutore.",
+                            else "Questa sezione può disattivare CutBet.\nÈ richiesto il PIN del tutore.",
                             onSuccess = {
                                 pinAccepted = true
                                 GuardState.grant(GuardState.GRACE_AFTER_PIN_MS)

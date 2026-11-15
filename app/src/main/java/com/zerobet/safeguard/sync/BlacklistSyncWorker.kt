@@ -318,7 +318,7 @@ class BlacklistSyncWorker(context: Context, params: WorkerParameters) : Coroutin
             connection.connectTimeout = 20_000
             connection.readTimeout = readTimeoutMs
             connection.instanceFollowRedirects = true
-            connection.setRequestProperty("User-Agent", "SafeGuard-BlocklistSync/1.0 (Android)")
+            connection.setRequestProperty("User-Agent", "CutBet-BlocklistSync/1.0 (Android)")
             val code = connection.responseCode
             if (code != HttpURLConnection.HTTP_OK) throw IOException("HTTP $code")
             connection.inputStream.bufferedReader(Charsets.UTF_8).use(block)

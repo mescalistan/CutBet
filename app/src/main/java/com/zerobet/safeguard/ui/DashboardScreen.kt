@@ -153,7 +153,7 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "SafeGuard",
+                    "CutBet",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
@@ -224,7 +224,7 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
                         Text("DNS privato attivo", fontWeight = FontWeight.SemiBold)
                         Text(
                             "Sul telefono è impostato un provider di DNS privato: le richieste non passano dal " +
-                                "filtro di SafeGuard. Imposta \"DNS privato\" su Disattivato o Automatico in " +
+                                "filtro di CutBet. Imposta \"DNS privato\" su Disattivato o Automatico in " +
                                 "Impostazioni → Rete e Internet.",
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -243,7 +243,7 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Risparmio energetico attivo", fontWeight = FontWeight.SemiBold)
                         Text(
-                            "Android può sospendere SafeGuard quando il telefono è inattivo. Escludi l'app " +
+                            "Android può sospendere CutBet quando il telefono è inattivo. Escludi l'app " +
                                 "dall'ottimizzazione della batteria.",
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -453,7 +453,7 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
             text = {
                 Text(
                     "La protezione verrà messa in pausa e l'Amministratore dispositivo disattivato per 5 minuti, " +
-                        "così da poter rimuovere SafeGuard. Se annulli la disinstallazione, riattiva i permessi dalla dashboard."
+                        "così da poter rimuovere CutBet. Se annulli la disinstallazione, riattiva i permessi dalla dashboard."
                 )
             },
             confirmButton = {

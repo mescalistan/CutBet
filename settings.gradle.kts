@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SafeGuard"
+rootProject.name = "CutBet"
 include(":app")

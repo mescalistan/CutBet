@@ -10,7 +10,7 @@ object BootWindow {
     /** Primi secondi dall'accensione (tempo monotòno). */
     const val SINCE_POWER_ON_MS = 45_000L
     /** Secondi dopo LOCKED_BOOT_COMPLETED / BOOT_COMPLETED (arrivano anche più tardi su telefoni lenti). */
-    const val SINCE_BOOT_BROADCAST_MS = 15_000L
+    const val SINCE_BOOT_BROADCAST_MS = 20_000L
 
     fun isBootPhase(elapsedNow: Long, bootBroadcastAt: Long?): Boolean =
         elapsedNow < SINCE_POWER_ON_MS ||

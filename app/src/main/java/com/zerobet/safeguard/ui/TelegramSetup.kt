@@ -185,7 +185,7 @@ fun TelegramSetupSection(modifier: Modifier = Modifier) {
                         notifier.config.setPrefs(p.copy(heartbeat = it)); refresh()
                     }
                     Text(
-                        "Ogni 24 ore ricevi \"💓 SafeGuard Attivo\" con lo stato della protezione e i blocchi del giorno. " +
+                        "Ogni 24 ore ricevi \"💓 CutBet Attivo\" con lo stato della protezione e i blocchi del giorno. " +
                             "Se per più di 24 ore non ricevi il messaggio giornaliero 💓, il telefono potrebbe essere spento, " +
                             "in Modalità Provvisoria o disconnesso.",
                         style = MaterialTheme.typography.bodySmall,
@@ -275,7 +275,7 @@ private fun GuideCard() {
                 append("Scegli un nome qualsiasi e un username che finisca per ")
                 withStyle(mono) { append("bot") }
                 append(" (es. ")
-                withStyle(mono) { append("MioSafeGuard_bot") }
+                withStyle(mono) { append("MioCutBet_bot") }
                 append("), poi copia il ")
                 withStyle(bold) { append("Token HTTP API") }
                 append(" che @BotFather ti fornisce e incollalo nel campo qui sotto.")

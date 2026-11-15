@@ -64,7 +64,7 @@ fun OnboardingScreen(vm: MainViewModel, onFinished: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
             Text(
-                "SafeGuard · Passo ${step + 1} di ${titles.size}",
+                "CutBet · Passo ${step + 1} di ${titles.size}",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -195,7 +195,7 @@ private fun TelegramStep(onDone: () -> Unit) {
     ) {
         Text(
             "Ricevi su Telegram un avviso quando qualcuno rimuove la SIM, riavvia il telefono, sbaglia il PIN " +
-                "o prova a disattivare SafeGuard. Puoi configurarlo anche più tardi dalla dashboard.",
+                "o prova a disattivare CutBet. Puoi configurarlo anche più tardi dalla dashboard.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -260,13 +260,13 @@ private fun PermissionsStep(vm: MainViewModel, onFinished: () -> Unit) {
         )
         PermissionCard(
             title = "3. Guardiano Impostazioni (Accessibilità)",
-            description = "Chiede il PIN quando qualcuno apre le Impostazioni per disattivare SafeGuard e legge i testi visibili in browser e app per bloccare pagine e annunci di scommesse, trading e prestiti. L'analisi avviene solo sul telefono: nulla viene salvato o inviato. Nell'elenco scegli \"SafeGuard – Guardiano Impostazioni\" e attivalo.",
+            description = "Chiede il PIN quando qualcuno apre le Impostazioni per disattivare CutBet e legge i testi visibili in browser e app per bloccare pagine e annunci di scommesse, trading e prestiti. L'analisi avviene solo sul telefono: nulla viene salvato o inviato. Nell'elenco scegli \"CutBet – Guardiano Impostazioni\" e attivalo.",
             granted = state.accessibility,
             onGrant = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         )
         PermissionCard(
             title = "4. Nessun risparmio energetico (consigliato)",
-            description = "Esclude SafeGuard dall'ottimizzazione della batteria, così Android non sospende mai il filtro e il Guardiano quando il telefono è inattivo. Il consumo dell'app resta minimo.",
+            description = "Esclude CutBet dall'ottimizzazione della batteria, così Android non sospende mai il filtro e il Guardiano quando il telefono è inattivo. Il consumo dell'app resta minimo.",
             granted = batteryExempt,
             onGrant = { context.startActivity(batteryExemptionIntent(context)) }
         )

@@ -63,9 +63,9 @@ object AlertPolicy {
         buildString {
             append(
                 when (severity) {
-                    Severity.CRITICAL -> "🚨 SafeGuard · ALLARME CRITICO"
-                    Severity.WARNING -> "⚠️ SafeGuard · Attenzione"
-                    else -> "ℹ️ SafeGuard"
+                    Severity.CRITICAL -> "🚨 CutBet · ALLARME CRITICO"
+                    Severity.WARNING -> "⚠️ CutBet · Attenzione"
+                    else -> "ℹ️ CutBet"
                 }
             )
             append('\n').append(title.trim())
@@ -103,7 +103,7 @@ object AlertPolicy {
             val body = if (texts.size == 1) {
                 texts[0]
             } else {
-                "📬 ${texts.size} avvisi di SafeGuard, in ordine cronologico:\n\n" + texts.joinToString("\n\n")
+                "📬 ${texts.size} avvisi di CutBet, in ordine cronologico:\n\n" + texts.joinToString("\n\n")
             }
             out += PackedMessage(count = j - i, text = body)
             i = j
@@ -135,7 +135,7 @@ object AlertPolicy {
 
     fun formatHeartbeat(stats: HeartbeatStats, now: Long, zone: ZoneId): String = buildString {
         val ok = stats.vpnOk && stats.guardOk
-        append(if (ok) "💓 SafeGuard Attivo" else "⚠️ SafeGuard attivo ma INCOMPLETO")
+        append(if (ok) "💓 CutBet Attivo" else "⚠️ CutBet attivo ma INCOMPLETO")
         append(" · Protezione VPN e Guardiano: ")
         append(
             when {
@@ -159,10 +159,10 @@ object AlertPolicy {
     }
 
     /** Messaggio di conferma inviato quando il bot viene collegato. */
-    const val CONNECTED_MESSAGE = "✅ SafeGuard collegato correttamente! Riceverai qui gli avvisi di sicurezza."
+    const val CONNECTED_MESSAGE = "✅ CutBet collegato correttamente! Riceverai qui gli avvisi di sicurezza."
 
     fun testMessage(timestamp: Long, zone: ZoneId): String =
-        "🔔 Messaggio di prova di SafeGuard\nIl canale degli avvisi funziona.\n🕒 ${dateTime(timestamp, zone)}"
+        "🔔 Messaggio di prova di CutBet\nIl canale degli avvisi funziona.\n🕒 ${dateTime(timestamp, zone)}"
 }
 
 /** Voce della coda persistente: testo già formattato e istante in cui è avvenuto il fatto. */
@@ -210,7 +210,7 @@ class BlockAggregator(
         lastSentAt = now
         val total = items.sumOf { it.count }
         val text = buildString {
-            append("🚫 SafeGuard · ")
+            append("🚫 CutBet · ")
             append(if (total == 1) "1 blocco" else "$total blocchi")
             append(" nell'ultimo minuto")
             items.take(maxLines).forEach { append('\n').append(AlertPolicy.formatBlockLine(it, zone)) }
