@@ -56,7 +56,8 @@ jobs:
 
       - name: Segreti di firma mancanti
         if: env.HAS_SIGNING != 'true'
-        run: echo "::warning title=Firma saltata::Segreti SIGNING_* non configurati: test eseguiti, APK/AAB firmati e Release non prodotti. Vedi scripts/upload-secrets.ps1."
+        run: |
+          echo "::warning title=Firma saltata::Segreti SIGNING_* non configurati - test eseguiti, APK/AAB firmati e Release non prodotti. Vedi scripts/upload-secrets.ps1."
 
       - name: Decodifica del keystore (fuori dal repository)
         if: env.HAS_SIGNING == 'true'
