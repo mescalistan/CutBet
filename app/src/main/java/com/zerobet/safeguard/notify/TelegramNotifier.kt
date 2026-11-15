@@ -108,6 +108,7 @@ class TelegramNotifier(
         if (channel == AlertChannel.CRITICAL) {
             queue.add(QueuedAlert(event.timestamp, AlertPolicy.formatImmediate(event.severity, event.title, event.detail, event.timestamp, zone)))
             flushSoon(0)
+            commands.onCriticalEvent()
         } else {
             val delayMs = synchronized(aggregator) {
                 // Tempo monotòno: spostare l'orologio non altera la finestra anti-429.

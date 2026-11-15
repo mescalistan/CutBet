@@ -103,6 +103,8 @@ class SafeGuardApp : Application() {
             addAction(Intent.ACTION_SHUTDOWN)
             addAction(Intent.ACTION_REBOOT)
             addAction(ShutdownReceiver.ACTION_QUICKBOOT_POWEROFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
             addAction(SimStateReceiver.ACTION_SIM_STATE_CHANGED)
         }
         val receiver = object : BroadcastReceiver() {
@@ -111,6 +113,8 @@ class SafeGuardApp : Application() {
                 if (!DeviceStorage.isReady(context)) return
                 when (intent.action) {
                     Intent.ACTION_USER_UNLOCKED -> onUserUnlocked()
+                    Intent.ACTION_SCREEN_ON -> telegram.commands.onScreen(true)
+                    Intent.ACTION_SCREEN_OFF -> telegram.commands.onScreen(false)
                     Intent.ACTION_USER_PRESENT -> {
                         onUserUnlocked()
                         IntegrityChecker.check(context, "sblocco schermo")

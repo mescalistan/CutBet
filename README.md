@@ -241,6 +241,11 @@ I comandi arrivano con `getUpdates` in long polling (una richiesta aperta fino a
 arriva un messaggio). L'`offset` dell'ultimo `update_id` è salvato su disco prima di eseguire il comando, quindi
 nessun comando viene eseguito due volte, nemmeno dopo un riavvio; al collegamento del bot l'offset parte dopo il
 `/start`. Ogni comando eseguito resta nel Registro Allarmi (filtro *Manomissione / SIM*).
+
+**Risparmio batteria** (`PollPacing`): con lo schermo acceso, spento da meno di 5 minuti o nei 5 minuti dopo un
+avviso critico, il long polling resta reattivo (risposta in meno di un secondo). Con lo schermo spento da oltre
+5 minuti c'è una richiesta breve ogni 90 secondi, senza connessione tenuta aperta: un comando arriva con al
+massimo 90 secondi di ritardo. La pausa si interrompe subito all'accensione dello schermo o a un nuovo allarme.
 - **Report giornaliero (heartbeat)**, attivo di default: ogni 24 ore *"💓 SafeGuard Attivo · Protezione VPN e
   Guardiano: OK · Blocchi ultime 24h: X domini, Y ricerche, Z tentativi impostazioni · Liste aggiornate."*
   (pulsante "Report ora" per provarlo). **Se per più di 24 ore il messaggio 💓 non arriva, il telefono può essere
@@ -347,8 +352,11 @@ SafeGuard è un deterrente efficace, non una barriera assoluta. In particolare:
   forzato tenendo premuto il tasto non inviano nulla: in quel caso resta la durata calcolata al riavvio;
 - se il processo viene chiuso subito dopo un invio riuscito ma prima di aggiornare la coda, al riavvio lo stesso
   avviso può arrivare due volte;
-- i comandi remoti tengono aperta una connessione verso Telegram (long polling): un consumo di dati e batteria
-  piccolo ma continuo, solo quando Telegram è collegato;
+- i comandi remoti tengono aperta una connessione verso Telegram (long polling) solo a schermo acceso; a schermo
+  spento da oltre 5 minuti fanno una richiesta breve ogni 90 secondi;
+- nei primi 45 secondi dall'accensione (o 15 secondi dopo LOCKED_BOOT_COMPLETED / BOOT_COMPLETED) un filtro VPN
+  trovato spento viene riavviato senza allarme (`BootWindow`): è il normale avvio del servizio. Gli stessi
+  broadcast arrivano anche dopo un arresto forzato dell'app, che però è già segnalato come manomissione critica;
 - la Modalità Provvisoria non è rilevabile mentre è attiva (nessuna app di terze parti gira): la si deduce dal
   report 💓 mancante e dalla durata riportata al riavvio successivo;
 - le funzioni di schermo diviso e finestra flottante variano tra i produttori: verificato sull'emulatore

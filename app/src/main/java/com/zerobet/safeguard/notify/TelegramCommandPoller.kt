@@ -6,7 +6,12 @@ import com.zerobet.safeguard.SafeGuardApp
 import com.zerobet.safeguard.data.EventType
 import com.zerobet.safeguard.security.DeviceStorage
 import com.zerobet.safeguard.security.TrustedClock
+import android.os.PowerManager
+import android.os.SystemClock
+import com.zerobet.safeguard.guard.PollPacing
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -19,7 +24,8 @@ import java.time.ZoneId
 
 /**
  * Comandi remoti del tutore: legge i messaggi del bot con getUpdates in long polling (una
- * richiesta aperta fino a [LONG_POLL_S] secondi, risposta immediata appena arriva un comando) e
+ * richiesta aperta fino a [PollPacing.LONG_POLL_S] secondi, risposta immediata appena arriva un comando;
+ * a schermo spento da oltre 5 minuti una richiesta breve ogni 90 secondi, vedi [PollPacing]) e
  * risponde. L'offset viene salvato su disco dopo ogni lettura: un comando non viene mai eseguito
  * due volte, nemmeno dopo un riavvio.
  *
@@ -31,6 +37,28 @@ class TelegramCommandPoller(
     private val updatesLock: Mutex,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+    @Volatile private var screenOffAt: Long? = null
+    @Volatile private var lastCriticalAt: Long? = null
+
+    private fun isInteractive(): Boolean =
+        context.getSystemService(PowerManager::class.java)?.isInteractive ?: true
+
+    /** ACTION_SCREEN_ON / ACTION_SCREEN_OFF (receiver registrato a runtime da SafeGuardApp). */
+    fun onScreen(on: Boolean) {
+        if (on) {
+            screenOffAt = null
+            wake.trySend(Unit)
+        } else if (screenOffAt == null) {
+            screenOffAt = SystemClock.elapsedRealtime()
+        }
+    }
+
+    /** Evento critico inviato al tutore: 5 minuti di risposta immediata, pausa interrotta. */
+    fun onCriticalEvent() {
+        lastCriticalAt = SystemClock.elapsedRealtime()
+        wake.trySend(Unit)
+    }
     private var job: Job? = null
     private val zone: ZoneId get() = ZoneId.systemDefault()
 
@@ -58,7 +86,13 @@ class TelegramCommandPoller(
                 delay(IDLE_MS)
                 continue
             }
-            val result = updatesLock.withLock { transport.getUpdates(token, offset, LONG_POLL_S) }
+            val plan = PollPacing.plan(isInteractive(), screenOffAt, lastCriticalAt, SystemClock.elapsedRealtime())
+            if (!plan.reactive) {
+                // Schermo spento da oltre 5 minuti: pausa, interrotta da schermo acceso o allarme.
+                withTimeoutOrNull(plan.pauseMs) { wake.receive() }
+                if (!app.telegram.config.snapshot.ready) continue
+            }
+            val result = updatesLock.withLock { transport.getUpdates(token, offset, plan.timeoutSec) }
             when (result) {
                 is UpdatesResult.Ok -> handle(result.body, token, chatId)
                 is UpdatesResult.NetworkError -> delay(OFFLINE_RETRY_MS)
@@ -119,7 +153,6 @@ class TelegramCommandPoller(
     private companion object {
         const val TAG = "SafeGuardCommands"
         const val KEY_OFFSET = "telegram_updates_offset"
-        const val LONG_POLL_S = 50
         const val IDLE_MS = 30_000L
         const val OFFLINE_RETRY_MS = 30_000L
         const val CONFLICT_RETRY_MS = 60_000L

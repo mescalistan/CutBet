@@ -31,6 +31,9 @@ class BootReceiver : BroadcastReceiver() {
         if (action !in HANDLED) return
         try {
             val app = context.applicationContext as SafeGuardApp
+            if (action == Intent.ACTION_LOCKED_BOOT_COMPLETED || action == Intent.ACTION_BOOT_COMPLETED) {
+                IntegrityChecker.markBootBroadcast()
+            }
             if (!DeviceStorage.isReady(context)) {
                 Log.w(TAG, "Dati non ancora nello storage protetto: si attende il primo sblocco")
                 return

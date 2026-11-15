@@ -49,6 +49,12 @@ object IntegrityChecker {
     const val PROBLEM_ACCESSIBILITY = "accessibility"
 
     @Volatile private var lastCheckAt = 0L
+    /** Ultimo LOCKED_BOOT_COMPLETED / BOOT_COMPLETED ricevuto (tempo monotòno). */
+    @Volatile private var bootBroadcastAt: Long? = null
+
+    fun markBootBroadcast() {
+        bootBroadcastAt = SystemClock.elapsedRealtime()
+    }
     @Volatile private var lastReported: String? = null
 
     /** @return il problema trovato ([PROBLEM_VPN], [PROBLEM_ACCESSIBILITY]) o null se è tutto a posto. */
@@ -72,7 +78,10 @@ object IntegrityChecker {
             if (pin.protectionEnabled && !DomainBlockerVpnService.running.value) {
                 if (VpnService.prepare(app) == null) {
                     DomainBlockerVpnService.start(app)
-                    app.securityLog.warning(EventType.INTEGRITY, "Filtro VPN trovato spento e riavviato", "Controllo: $trigger")
+                    // Subito dopo l'accensione il filtro non è ancora partito: nessun allarme.
+                    if (!BootWindow.isBootPhase(SystemClock.elapsedRealtime(), bootBroadcastAt)) {
+                        app.securityLog.warning(EventType.INTEGRITY, "Filtro VPN trovato spento e riavviato", "Controllo: $trigger")
+                    }
                 } else {
                     problem = PROBLEM_VPN
                 }
