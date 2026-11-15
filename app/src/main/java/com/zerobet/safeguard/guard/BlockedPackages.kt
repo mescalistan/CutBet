@@ -100,7 +100,7 @@ object BlockedPackages {
         if (banks.isAllowed(pkg)) return null
         if (banks.isKnownBank(pkg)) return ContentCategory.BANK
         val name = label?.lowercase().orEmpty()
-        if (allowedLabels.any { it.length >= 4 && (pkg.contains(it) || name.replace(" ", "").contains(it)) }) return null
+        if (matchesAllowedLabel(pkg, name, allowedLabels)) return null
 
         KNOWN[pkg]?.let { return it }
         // Varianti dello stesso sviluppatore: "com.binance.dev.beta" è coperto da "com.binance.dev".
@@ -131,6 +131,21 @@ object BlockedPackages {
         }
     }
 
+    /** Il package o il nome dell'app contiene il nome di un dominio in whitelist ("poste" per poste.it). */
+    fun matchesAllowedLabel(packageName: String, label: String?, allowedLabels: Set<String>): Boolean {
+        val pkg = packageName.lowercase()
+        val name = label?.lowercase()?.replace(" ", "").orEmpty()
+        return allowedLabels.any { it.length >= 4 && (pkg.contains(it) || name.contains(it)) }
+    }
+
+    /**
+     * App della banca autorizzata (home banking, app collegate del gruppo, o con il nome della banca):
+     * dentro si applicano solo le regole bancarie (sezioni prestiti/investimenti/trading chiuse dal
+     * titolo), non il filtro generico dei contenuti, che chiuderebbe la home per le voci di menu.
+     */
+    fun isAuthorizedBankApp(packageName: String, label: String?, allowedLabels: Set<String>, banks: BankApps): Boolean =
+        banks.isAllowed(packageName.lowercase()) || matchesAllowedLabel(packageName, label, allowedLabels)
+
     /** Ricava le app bancarie consentite dai domini in whitelist (catalogo in DefaultData). */
     fun bankAppsFor(whitelistedDomains: Collection<String>): BankApps {
         val whitelisted = whitelistedDomains.map { it.lowercase().removePrefix("www.") }.toHashSet()
@@ -138,7 +153,10 @@ object BlockedPackages {
         val all = HashSet<String>()
         for (preset in com.zerobet.safeguard.data.DefaultData.bankPresets) {
             all.addAll(preset.packages)
-            if (preset.domains.any { it in whitelisted }) allowed.addAll(preset.packages)
+            if (preset.domains.any { it in whitelisted }) {
+                allowed.addAll(preset.packages)
+                allowed.addAll(preset.relatedPackages)
+            }
         }
         return BankApps(allowed, all)
     }

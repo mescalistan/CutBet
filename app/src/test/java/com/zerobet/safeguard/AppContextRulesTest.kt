@@ -7,6 +7,7 @@ import com.zerobet.safeguard.guard.ChatKind
 import com.zerobet.safeguard.guard.ContentCategory
 import com.zerobet.safeguard.guard.TelegramRules
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -148,5 +149,38 @@ class DeveloperOptionsRulesTest {
         ).forEach { assertTrue("Falso positivo: $it", !tap(it)) }
         assertTrue(!tap(""))
         assertTrue(!tap("Il numero build si trova in fondo alla pagina Info telefono"))
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // App collegate della banca autorizzata (PosteID, app Poste Italiane)
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    fun `con Poste in whitelist PosteID e l'app Poste Italiane sono app della banca autorizzata`() {
+        val banks = BlockedPackages.bankAppsFor(listOf("poste.it", "postepay.it"))
+        val labels = setOf("poste", "postepay")
+        listOf(
+            "posteitaliane.posteapp.appposteid" to "PosteID",
+            "com.posteitaliane.spim" to "Poste Italiane",
+            "posteitaliane.posteapp.appbpol" to "BancoPosta",
+            "posteitaliane.posteapp.apppostepay" to "Postepay",
+        ).forEach { (pkg, label) ->
+            assertTrue(pkg, BlockedPackages.isAuthorizedBankApp(pkg, label, labels, banks))
+            assertNull(pkg, BlockedPackages.categoryOf(pkg, label, labels, banks))
+        }
+        // Le regole bancarie lasciano libera la home con le voci di menu.
+        assertNull(BankAppRules.findRiskySection(listOf("Home", "Ciao Mario", "Saldo disponibile", "Prestiti", "Investimenti", "Buoni e Libretti")))
+        assertNotNull(BankAppRules.findRiskySection(listOf("Richiedi prestito", "Importo", "Durata")))
+    }
+
+    @Test
+    fun `con un'altra banca in whitelist PosteID non e' bloccata come banca, BancoPosta si`() {
+        val banks = BlockedPackages.bankAppsFor(listOf("unicredit.it"))
+        val labels = setOf("unicredit")
+        assertFalse(BlockedPackages.isAuthorizedBankApp("posteitaliane.posteapp.appposteid", "PosteID", labels, banks))
+        assertNull(BlockedPackages.categoryOf("posteitaliane.posteapp.appposteid", "PosteID", labels, banks))
+        assertEquals(ContentCategory.BANK, BlockedPackages.categoryOf("posteitaliane.posteapp.appbpol", "BancoPosta", labels, banks))
+        // App ausiliaria della banca autorizzata riconosciuta dal nome.
+        assertTrue(BlockedPackages.isAuthorizedBankApp("it.unicredit.mobiletoken", "UniCredit Mobile Token", labels, banks))
     }
 }

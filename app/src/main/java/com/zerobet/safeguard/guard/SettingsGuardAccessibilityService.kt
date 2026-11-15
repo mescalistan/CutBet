@@ -80,6 +80,8 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
     private var inAppLevel = 0
     private val appNames = HashMap<String, String>()
     private val packageVerdicts = HashMap<String, java.util.Optional<ContentCategory>>()
+    private val bankAppVerdicts = HashMap<String, Boolean>()
+    private var allowedBankLabels: Set<String> = emptySet()
     private var packageVerdictsFilter: Any? = null
     private var allowedBankApps = BlockedPackages.BankApps.NONE
     private val handler = Handler(Looper.getMainLooper())
@@ -536,8 +538,9 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             return
         }
 
-        // b) App della banca autorizzata: libera, tranne le sezioni prestiti/investimenti/trading.
-        if (allowedBankApps.isAllowed(pkg)) {
+        // b) App della banca autorizzata (home banking, app collegate come PosteID, o con il nome della
+        //    banca): libera, tranne le sezioni prestiti/investimenti/trading riconosciute dal titolo.
+        if (isAuthorizedBankApp(pkg)) {
             BankAppRules.findRiskySection(screen.segments)?.let { blockInApp(pkg, it, now, bankSection = true) }
             return
         }
@@ -643,7 +646,16 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         if (filter === packageVerdictsFilter) return
         packageVerdictsFilter = filter
         packageVerdicts.clear()
+        bankAppVerdicts.clear()
         allowedBankApps = BlockedPackages.bankAppsFor(filter.whitelistedDomains)
+        allowedBankLabels = filter.whitelistedDomains.mapTo(HashSet()) { BlockedPackages.labelOfDomain(it) }
+    }
+
+    private fun isAuthorizedBankApp(pkg: String): Boolean {
+        refreshBankApps()
+        return bankAppVerdicts.getOrPut(pkg) {
+            BlockedPackages.isAuthorizedBankApp(pkg, appName(pkg).takeIf { it != pkg }, allowedBankLabels, allowedBankApps)
+        }
     }
 
     private fun blockApp(pkg: String, category: ContentCategory, now: Long) {

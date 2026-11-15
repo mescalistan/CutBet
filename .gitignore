@@ -19,3 +19,6 @@ emulator-test-pin.txt
 # Firma di release: keystore e password restano solo in locale (vedi README)
 keystore/
 keystore.properties
+
+# APK pronti da condividere
+dist/

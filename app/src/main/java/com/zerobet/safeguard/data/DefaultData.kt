@@ -6,7 +6,19 @@ package com.zerobet.safeguard.data
  * Se il tutore la mette in whitelist, sito e app restano utilizzabili (con il Guardiano attivo
  * dentro l'app sulle sezioni prestiti e investimenti); altrimenti sito e app sono bloccati.
  */
-data class BankPreset(val name: String, val domains: List<String>, val packages: List<String> = emptyList())
+/**
+ * Banca del catalogo.
+ * @param packages app di home banking: libere se la banca è in whitelist, bloccate altrimenti.
+ * @param relatedPackages altre app dello stesso gruppo (identità digitale, servizi): libere se la banca è
+ *   in whitelist, ma MAI bloccate come "banca non autorizzata" (es. PosteID serve anche per lo SPID).
+ *   Prefissi: "com.posteitaliane" copre anche "com.posteitaliane.spim".
+ */
+data class BankPreset(
+    val name: String,
+    val domains: List<String>,
+    val packages: List<String> = emptyList(),
+    val relatedPackages: List<String> = emptyList(),
+)
 
 /**
  * Dati con cui viene pre-popolato il database al primo avvio.
@@ -25,7 +37,8 @@ object DefaultData {
         BankPreset("Monte dei Paschi di Siena", listOf("mps.it"), listOf("it.mps.app.digitalbanking")),
         BankPreset(
             "Poste Italiane / BancoPosta", listOf("poste.it", "postepay.it"),
-            listOf("posteitaliane.posteapp.appbpol", "posteitaliane.posteapp.apppostepay")
+            listOf("posteitaliane.posteapp.appbpol", "posteitaliane.posteapp.apppostepay"),
+            relatedPackages = listOf("posteitaliane.posteapp", "com.posteitaliane"),
         ),
         BankPreset("BNL", listOf("bnl.it"), listOf("it.bnl.apps.banking")),
         BankPreset("Crédit Agricole Italia", listOf("credit-agricole.it"), listOf("it.cariparma.mobile")),
