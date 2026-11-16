@@ -96,7 +96,8 @@ object MailRules {
             hit?.let { item to it }
         }
         if (risky.isEmpty()) return GuardDecision.None
-        val boxes = risky.map { it.first.box.intersect(model.screen) }.filter { !it.isEmpty }.distinct()
-        return if (boxes.isEmpty()) GuardDecision.None else GuardDecision.MaskRects(boxes, risky.map { it.second })
+        val targets = risky.map { it.first to it.first.box.intersect(model.screen) }.filter { !it.second.isEmpty }.distinctBy { it.second }
+        return if (targets.isEmpty()) GuardDecision.None
+        else GuardDecision.MaskRects(targets.map { it.second }, risky.map { it.second }, targets.map { it.first })
     }
 }

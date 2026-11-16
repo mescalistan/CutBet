@@ -53,6 +53,8 @@ class CustomMaskImageStore(context: Context) {
 
     private fun refresh() {
         _settings.value = readSettings()
+        // I pannelli già a schermo mostrano subito le foto e la frase nuove.
+        com.zerobet.safeguard.guard.SettingsGuardAccessibilityService.refreshMasksNow()
     }
 
     val remaining: Int get() = files.remaining()
@@ -86,6 +88,37 @@ class CustomMaskImageStore(context: Context) {
         return saved
     }
 
+    /**
+     * Foto ricevuta come byte (bot Telegram): stessa preparazione delle foto della galleria.
+     * Con [fifo] le foto più vecchie fanno posto alla nuova. @return true se salvata.
+     */
+    fun importBytes(bytes: ByteArray, fifo: Boolean): Boolean {
+        val prepared = try {
+            prepare(BytesSource(bytes))
+        } catch (e: Exception) {
+            Log.w(TAG, "Foto non importata: ${e.javaClass.simpleName}")
+            null
+        } ?: return false
+        if (fifo) files.makeRoom().forEach { evict(it) }
+        val ok = files.write(System.currentTimeMillis(), 0, prepared) != null
+        refresh()
+        preload()
+        return ok
+    }
+
+    /** Toglie tutte le foto (il pannello torna scuro). */
+    fun clearAll() {
+        files.list().forEach { evict(it.name) }
+        files.clear()
+        refresh()
+    }
+
+    private fun evict(name: String) {
+        cache.remove(name)
+        cache.remove(THUMB + name)
+        cache.remove(BLUR + name)
+    }
+
     fun remove(name: String) {
         files.delete(name)
         cache.remove(name)
@@ -94,18 +127,28 @@ class CustomMaskImageStore(context: Context) {
         refresh()
     }
 
+    /** Origine di una foto: si può aprire più volte (dimensioni, decodifica, EXIF). */
+    private interface Source { fun open(): java.io.InputStream? }
+    private class BytesSource(val bytes: ByteArray) : Source {
+        override fun open() = java.io.ByteArrayInputStream(bytes)
+    }
+    private inner class UriSource(val uri: Uri) : Source {
+        override fun open() = appContext.contentResolver.openInputStream(uri)
+    }
+
+    private fun prepare(uri: Uri): ByteArray? = prepare(UriSource(uri))
+
     /** Decodifica campionata, rotazione EXIF, lato lungo 800 px, JPEG 85. */
-    private fun prepare(uri: Uri): ByteArray? {
-        val resolver = appContext.contentResolver
+    private fun prepare(source: Source): ByteArray? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        source.open()?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         val options = BitmapFactory.Options().apply {
             inSampleSize = MaskImageMath.sampleSizeFor(bounds.outWidth, bounds.outHeight, MaskImageFiles.MAX_SIDE)
         }
-        var bitmap = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+        var bitmap = source.open()?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
         val orientation = try {
-            resolver.openInputStream(uri)?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) } ?: 1
+            source.open()?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) } ?: 1
         } catch (e: Exception) {
             1
         }

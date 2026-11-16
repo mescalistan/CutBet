@@ -48,6 +48,8 @@ class TelegramNotifierTest {
             return r
         }
         override fun getUpdates(token: String, offset: Long?, timeoutSec: Int) = updates
+        override fun downloadFile(token: String, fileId: String, maxBytes: Long): com.zerobet.safeguard.notify.DownloadResult =
+            com.zerobet.safeguard.notify.DownloadResult.Failed("non usato")
     }
 
     // ---------------------------------------------------------------------------------------

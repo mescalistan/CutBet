@@ -39,11 +39,15 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
     /** Pannello mostrato: [layout], foto e dimensioni decidono se la vista va ricostruita. */
     private class Panel(
         val view: View, val params: WindowManager.LayoutParams, var box: Box,
-        val layout: MaskLayout, val photo: String?, val label: String,
+        val layout: MaskLayout, val photo: String?, val label: String, val caption: String,
+        var hidden: Boolean = false,
     )
 
     /** Foto del tutore ("ancoraggio affettivo"), se l'app ne ha. */
     private val photos: CustomMaskImageStore? = (service.application as? SafeGuardApp)?.maskImages
+
+    /** Foto e frase con cui sono stati costruiti i pannelli a schermo. */
+    private var shownSettings: CustomMaskImageStore.Settings? = null
     private val rotation = PhotoRotation()
 
     private val windowManager = service.getSystemService(WindowManager::class.java)
@@ -74,10 +78,13 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
         }
         ownerPackage = packageName
         margin = (marginDp * density).toInt()
-        // Stesse posizioni: nessun lavoro.
-        if (boxes.size == panels.size && boxes.zip(panels).all { (b, p) -> b == p.box }) return false
-        while (panels.size > boxes.size) remove(panels.removeAt(panels.size - 1))
         val settings = photos?.settings?.value
+        // Stesse posizioni e stesse foto/frase: nessun lavoro. Se il tutore cambia foto o frase
+        // (anche dal bot) i pannelli già a schermo vengono ricostruiti subito.
+        // (Un pannello nascosto dallo scorrimento conserva il vecchio box: va comunque rimostrato.)
+        if (settings == shownSettings && boxes.size == panels.size && boxes.zip(panels).all { (b, p) -> b == p.box && !p.hidden }) return false
+        shownSettings = settings
+        while (panels.size > boxes.size) remove(panels.removeAt(panels.size - 1))
         boxes.forEachIndexed { i, box ->
             val m = margin
             val height = box.height + 2 * m
@@ -86,11 +93,13 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
             val photo = if (layout == MaskLayout.DEFAULT_DARK || settings == null) null
             else settings.images.getOrNull(rotation.photoFor(i, settings.images.size))
             val panel = panels.getOrNull(i)
+            val caption = settings?.caption.orEmpty()
             val sameLook = panel != null && panel.layout == layout && panel.photo == photo && panel.label == label &&
+                (layout == MaskLayout.DEFAULT_DARK || panel.caption == caption) &&
                 panel.box.width == box.width && panel.box.height == box.height
             when {
                 panel == null -> add(box, label, layout, photo, settings?.caption.orEmpty())?.let { panels += it }
-                sameLook -> move(panel, box)
+                sameLook -> place(i, box)
                 else -> {
                     remove(panel)
                     val fresh = add(box, label, layout, photo, settings?.caption.orEmpty())
@@ -120,6 +129,37 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
         }
         if (panels.isEmpty()) ownerPackage = null
     }
+
+    /**
+     * Sposta il pannello [index] su [box] riusando la sua finestra (nessuna vista ricreata),
+     * o lo nasconde subito (null) se il banner è uscito dall'area visibile. Chiamato a ogni
+     * evento di scorrimento: solo updateViewLayout, nessun calcolo pesante.
+     */
+    fun place(index: Int, box: Box?) {
+        val p = panels.getOrNull(index) ?: return
+        if (box == null) {
+            if (p.hidden) return
+            p.hidden = true
+            p.view.visibility = View.GONE
+            p.params.flags = p.params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            try {
+                windowManager.updateViewLayout(p.view, p.params)
+            } catch (e: Exception) {
+                // già rimosso
+            }
+            return
+        }
+        if (p.hidden) {
+            p.hidden = false
+            p.view.visibility = View.VISIBLE
+            p.params.flags = p.params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else if (box == p.box) {
+            return
+        }
+        move(p, box)
+    }
+
+    val panelCount: Int get() = panels.size
 
     fun clear() {
         panels.forEach { remove(it) }
@@ -171,7 +211,7 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
         }
         return try {
             windowManager.addView(view, params)
-            Panel(view, params, box, layout, photo, label)
+            Panel(view, params, box, layout, photo, label, caption)
         } catch (e: Exception) {
             Log.w(TAG, "Pannello non mostrato: ${e.javaClass.simpleName}")
             null
@@ -212,6 +252,7 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
 
     private fun setTouchable(touchable: Boolean) {
         for (p in panels) {
+            if (p.hidden) continue    // un pannello nascosto non deve mai intercettare i tocchi
             val flags = if (touchable) p.params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
             else p.params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
             if (flags == p.params.flags) continue
@@ -256,7 +297,8 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
 
     companion object {
         private const val TAG = "CutBetAdMask"
-        const val MARGIN_DP = 8f
+        /** Margine di sicurezza intorno al box: aderente all'annuncio senza lasciarne vedere i bordi. */
+        const val MARGIN_DP = 4f
         const val LABEL_AD = "Contenuto pubblicitario oscurato da CutBet"
         const val LABEL_CONTENT = "Contenuto oscurato da CutBet"
         const val LABEL_MAIL = "Email oscurata da CutBet"

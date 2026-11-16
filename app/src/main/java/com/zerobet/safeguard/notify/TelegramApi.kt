@@ -40,6 +40,14 @@ interface TelegramTransport {
     fun sendMessage(token: String, chatId: Long, text: String): SendResult
     /** [offset]: primo update_id da restituire (conferma i precedenti); [timeoutSec] > 0 = long polling. */
     fun getUpdates(token: String, offset: Long? = null, timeoutSec: Int = 0): UpdatesResult
+    /** Scarica un file inviato al bot (getFile + download), al massimo [maxBytes]. */
+    fun downloadFile(token: String, fileId: String, maxBytes: Long): DownloadResult
+}
+
+/** Esito del download di un file inviato al bot. */
+sealed class DownloadResult {
+    class Ok(val bytes: ByteArray) : DownloadResult()
+    data class Failed(val description: String) : DownloadResult()
 }
 
 /**
@@ -168,6 +176,46 @@ object TelegramApi : TelegramTransport {
     private sealed class HttpResponse {
         class Body(val code: Int, val body: String) : HttpResponse()
         class Error(val message: String) : HttpResponse()
+    }
+
+    override fun downloadFile(token: String, fileId: String, maxBytes: Long): DownloadResult {
+        val info = request(token, "getFile?file_id=" + URLEncoder.encode(fileId, "UTF-8"), null)
+        if (info !is HttpResponse.Body || info.code != 200) return DownloadResult.Failed("file non disponibile")
+        val path = parseFilePath(info.body, maxBytes) ?: return DownloadResult.Failed("file troppo grande o non disponibile")
+        val connection = try {
+            URL("${BuildConfig.TELEGRAM_API_BASE}/file/bot$token/$path").openConnection() as HttpURLConnection
+        } catch (e: IOException) {
+            return DownloadResult.Failed(e.javaClass.simpleName)
+        }
+        return try {
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
+            if (connection.responseCode != 200) return DownloadResult.Failed("HTTP ${connection.responseCode}")
+            val out = java.io.ByteArrayOutputStream()
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(16 * 1024)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    out.write(buffer, 0, n)
+                    if (out.size() > maxBytes) return DownloadResult.Failed("file oltre gli 8 MB")
+                }
+            }
+            DownloadResult.Ok(out.toByteArray())
+        } catch (e: IOException) {
+            DownloadResult.Failed(e.javaClass.simpleName)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Percorso del file da getFile, se esiste e non supera [maxBytes]. */
+    fun parseFilePath(body: String, maxBytes: Long): String? = try {
+        val result = JSONObject(body).takeIf { it.optBoolean("ok") }?.optJSONObject("result")
+        val size = result?.optLong("file_size", 0L) ?: 0L
+        result?.optString("file_path")?.takeIf { it.isNotBlank() && size <= maxBytes && !it.contains("..") }
+    } catch (e: JSONException) {
+        null
     }
 
     private fun request(token: String, method: String, form: String?, readTimeoutMs: Int = READ_TIMEOUT_MS): HttpResponse {

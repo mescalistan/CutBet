@@ -120,9 +120,16 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
                 val owner = m.ownerPackage
                 if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != owner && pkg != packageName) {
                     clearMasks()
-                } else if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && pkg == owner) {
-                    val dy = if (android.os.Build.VERSION.SDK_INT >= 28) event.scrollDeltaY else 0
-                    if (dy != 0) m.offset(dy, resources.displayMetrics.heightPixels) else clearMasks()
+                } else if (pkg == owner && (type == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                        type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                ) {
+                    // Pannelli agganciati ai nodi: si rilegge solo la loro posizione (pochi nodi,
+                    // nessuna lettura dell'intero schermo) e si spostano le finestre esistenti.
+                    if (!trackMasks()) {
+                        val dy = if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && android.os.Build.VERSION.SDK_INT >= 28) event.scrollDeltaY else 0
+                        if (dy != 0) m.offset(dy, resources.displayMetrics.heightPixels)
+                        else if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) clearMasks()
+                    }
                 }
             }
         }
@@ -130,6 +137,11 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         if (pkg in ignoredPackages) return
         // Nei browser la pagina va riletta quando si scorre (nuovi banner da oscurare).
         if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && pkg in BROWSER_URL_BARS) lastScanKeyAt = SystemClock.elapsedRealtime()
+        // Scorrendo il testo non cambia ma le posizioni sì: la schermata va rivalutata (banner nuovi).
+        if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            lastScreenHash = 0
+            lastScrollAt = SystemClock.elapsedRealtime()
+        }
         // Cambio di finestra e testo digitato si valutano subito; scorrimento e aggiornamenti del
         // contenuto (decine al secondo) solo quando la schermata si è fermata.
         val immediate = type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
@@ -178,22 +190,25 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
                     return
                 }
             }
-            scheduleScan(pkg, now, immediate)
+            scheduleScan(pkg, now, immediate, scrolling = type == AccessibilityEvent.TYPE_VIEW_SCROLLED)
         }
     }
 
     /**
      * Debounce: l'albero dei nodi viene letto solo quando la schermata è ferma da
      * [SCAN_DEBOUNCE_MS] (una pagina che si carica genera decine di eventi al secondo), ma mai
-     * più tardi di [SCAN_MAX_WAIT_MS] dal primo evento in attesa.
+     * più tardi di [SCAN_MAX_WAIT_MS] dal primo evento in attesa. Durante uno scorrimento il limite
+     * scende a [SCROLL_MAX_WAIT_MS]: un banner che entra nello schermo viene oscurato subito, non
+     * solo quando il dito si ferma.
      */
-    private fun scheduleScan(pkg: String, now: Long, immediate: Boolean = false) {
+    private fun scheduleScan(pkg: String, now: Long, immediate: Boolean = false, scrolling: Boolean = false) {
         pendingPackage = pkg
         if (pendingSince == 0L) pendingSince = now
         handler.removeCallbacks(scanRunnable)
         val waited = now - pendingSince
         val delay = when {
             waited >= SCAN_MAX_WAIT_MS -> 0L
+            scrolling -> (SCROLL_MAX_WAIT_MS - waited).coerceIn(0L, SCROLL_MAX_WAIT_MS)
             immediate -> SCAN_IMMEDIATE_MS      // pochi ms: raggruppa gli eventi dello stesso istante
             else -> SCAN_DEBOUNCE_MS
         }
@@ -654,12 +669,19 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         }
         val onlyAds = decision.hits.all { it.kind == InAppKind.AD }
         val changed = m.show(pkg, decision.boxes, label ?: if (onlyAds) AdMaskOverlayManager.LABEL_AD else AdMaskOverlayManager.LABEL_CONTENT, marginDp)
+        val screen = Box(0, 0, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+        tracks = decision.boxes.mapIndexed { i, box ->
+            val source = decision.sources.getOrNull(i)
+            MaskTrack(source?.anchor as? AccessibilityNodeInfo, source?.box ?: box, box, source?.viewport ?: screen)
+        }
+        setFastEvents(true)
         // Pannelli appena mostrati o spostati: si rilegge la schermata quando è ferma. Durante
         // un'animazione di apertura/ritorno le posizioni lette possono essere ancora in movimento.
         if (changed) {
             handler.removeCallbacks(settleRescan)
             settlePackage = pkg
-            handler.postDelayed(settleRescan, MASK_SETTLE_MS)
+            val scrolling = SystemClock.elapsedRealtime() - lastScrollAt < MASK_SETTLE_MS
+            handler.postDelayed(settleRescan, if (scrolling) SCROLL_SETTLE_MS else MASK_SETTLE_MS)
         }
         // Registro: una riga per insieme di contenuti oscurati (non a ogni scorrimento).
         val key = pkg + decision.hits.joinToString("|") { it.term }
@@ -676,6 +698,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
     }
 
     private var settlePackage: String? = null
+    private var lastScrollAt = 0L
     private val settleRescan = Runnable {
         val pkg = settlePackage ?: return@Runnable
         lastScreenHash = 0
@@ -683,9 +706,66 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         scheduleScan(pkg, SystemClock.elapsedRealtime(), immediate = true)
     }
 
+    /** Pannello agganciato: nodo dell'annuncio, sua posizione e box del pannello al momento del calcolo. */
+    private class MaskTrack(val node: AccessibilityNodeInfo?, val anchorThen: Box, val mask: Box, val viewport: Box)
+
+    private var tracks: List<MaskTrack> = emptyList()
+    private var lastTrackAt = 0L
+    private val trackRect = android.graphics.Rect()
+
+    /**
+     * Riposiziona i pannelli seguendo i loro nodi. @return false se nessun pannello è agganciato
+     * (si usa allora lo scostamento dell'evento). Al massimo una volta ogni [TRACK_MIN_INTERVAL_MS].
+     */
+    private fun trackMasks(): Boolean {
+        val m = masks ?: return false
+        val list = tracks
+        if (list.isEmpty() || list.all { it.node == null } || list.size != m.panelCount) return false
+        val now = SystemClock.uptimeMillis()
+        if (now - lastTrackAt < TRACK_MIN_INTERVAL_MS) return true
+        lastTrackAt = now
+        list.forEachIndexed { i, t ->
+            val node = t.node ?: return@forEachIndexed
+            val box = try {
+                if (!node.refresh() || !node.isVisibleToUser) {
+                    null
+                } else {
+                    node.getBoundsInScreen(trackRect)
+                    ScrollTracking.relocate(t.mask, t.anchorThen, Box(trackRect.left, trackRect.top, trackRect.right, trackRect.bottom), t.viewport)
+                }
+            } catch (e: Exception) {
+                null
+            }
+            m.place(i, box)
+        }
+        // Posizione esatta (e banner nuovi) appena lo scorrimento si ferma: durante un fling le
+        // posizioni lette dal browser possono essere in ritardo di qualche fotogramma.
+        handler.removeCallbacks(settleRescan)
+        settlePackage = m.ownerPackage
+        handler.postDelayed(settleRescan, SCROLL_SETTLE_MS)
+        return true
+    }
+
+    /**
+     * Con pannelli a schermo gli eventi arrivano senza raggruppamento (ogni ~16 ms), così i
+     * pannelli seguono lo scorrimento; senza pannelli si torna al ritmo leggero di 150 ms.
+     */
+    private var fastEvents = false
+    private fun setFastEvents(fast: Boolean) {
+        if (fast == fastEvents) return
+        fastEvents = fast
+        try {
+            serviceInfo = serviceInfo.apply { notificationTimeout = if (fast) FAST_EVENTS_MS else NORMAL_EVENTS_MS }
+        } catch (e: Exception) {
+            android.util.Log.w("SafeGuardGuard", "Frequenza degli eventi non cambiata: ${e.javaClass.simpleName}")
+        }
+    }
+
     /** Toglie subito i pannelli; con [resetScan] la schermata verrà riletta al prossimo evento. */
     private fun clearMasks(resetScan: Boolean = true) {
         val m = masks ?: return
+        tracks = emptyList()
+        setFastEvents(false)
         if (!m.isShowing) return
         m.clear()
         lastMaskLogKey = null
@@ -709,13 +789,13 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         val screen = Box(0, 0, metrics.widthPixels, metrics.heightPixels)
         val items = ArrayList<ScreenItem>()
         val budget = intArrayOf(MAX_MODEL_NODES)
-        visitForModel(root, inScroll = false, depth = 0, screen, items, budget)
+        visitForModel(root, inScroll = false, depth = 0, screen, items, budget, viewport = screen)
         return ScreenModel(items, screen, marketplace)
     }
 
     private fun visitForModel(
         node: AccessibilityNodeInfo, inScroll: Boolean, depth: Int, screen: Box,
-        items: MutableList<ScreenItem>, budget: IntArray,
+        items: MutableList<ScreenItem>, budget: IntArray, viewport: Box,
     ) {
         if (budget[0]-- <= 0 || depth > MAX_DEPTH || !node.isVisibleToUser) return
         val rect = android.graphics.Rect()
@@ -725,10 +805,12 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         val scrollContainer = node.isScrollable || SCROLL_CLASSES.any { className.endsWith(it) }
         val container = depth == 0 || box.height >= screen.height * ScreenDecider.MAIN_CONTENT_RATIO || scrollContainer
         if (container && node.childCount > 0) {
-            ownText(node)?.let { items += ScreenItem(listOf(it), box, roleOf(box, inScroll, screen)) }
+            ownText(node)?.let { items += ScreenItem(listOf(it), box, roleOf(box, inScroll, screen), anchorOf(node), viewport) }
+            // Dentro una lista o una pagina i pannelli restano nella sua area visibile.
+            val childViewport = if (scrollContainer) viewport.intersect(box).takeIf { !it.isEmpty } ?: viewport else viewport
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i) ?: continue
-                visitForModel(child, inScroll || scrollContainer, depth + 1, screen, items, budget)
+                visitForModel(child, inScroll || scrollContainer, depth + 1, screen, items, budget, childViewport)
                 release(child)
             }
             return
@@ -745,13 +827,18 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             val before = items.size
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i) ?: continue
-                visitForModel(child, inScroll = true, depth + 1, screen, items, budget)
+                visitForModel(child, inScroll = true, depth + 1, screen, items, budget, viewport)
                 release(child)
             }
             if (items.size > before) return
         }
-        items += ScreenItem(segments, box, role)
+        items += ScreenItem(segments, box, role, anchorOf(node), viewport)
     }
+
+    /** Nodo da seguire: da Android 13 i nodi non vengono riciclati, prima serve una copia. */
+    @Suppress("DEPRECATION")
+    private fun anchorOf(node: AccessibilityNodeInfo): AccessibilityNodeInfo =
+        if (android.os.Build.VERSION.SDK_INT >= 33) node else AccessibilityNodeInfo.obtain(node)
 
     private fun roleOf(box: Box, inScroll: Boolean, screen: Box): ItemRole =
         if (!inScroll && box.top < screen.height * HEADER_TOP_RATIO) ItemRole.HEADER else ItemRole.CONTENT
@@ -1012,11 +1099,16 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         private const val MULTI_WINDOW_LOCK_DELAY_MS = 350L
         private const val SCAN_DEBOUNCE_MS = 350L
         private const val SCAN_IMMEDIATE_MS = 40L
+        private const val SCROLL_MAX_WAIT_MS = 150L
         private const val SEARCH_ESCALATION_MS = 1_500L
         private const val IN_APP_ESCALATION_MS = 5_000L
         private const val MAX_NODES = 600
         private const val MAX_MODEL_NODES = 1_500
         private const val MASK_SETTLE_MS = 700L
+        private const val SCROLL_SETTLE_MS = 200L
+        private const val TRACK_MIN_INTERVAL_MS = 12L
+        private const val FAST_EVENTS_MS = 16L
+        private const val NORMAL_EVENTS_MS = 150L
         private const val MAX_ITEM_SEGMENTS = 40
         private const val SPLIT_HEIGHT_RATIO = 0.30
         private const val SPLIT_SEGMENTS = 8
@@ -1255,6 +1347,18 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         }
 
         /** true se l'utente ha attivato questo servizio in Impostazioni -> Accessibilità. */
+        /** Foto o frase cambiate: i pannelli a schermo vengono ridisegnati subito. Sicuro da qualsiasi thread. */
+        fun refreshMasksNow() {
+            instance?.let { service ->
+                service.handler.post {
+                    val pkg = service.masks?.ownerPackage ?: return@post
+                    service.lastScreenHash = 0
+                    service.lastScanKey = null
+                    service.scheduleScan(pkg, SystemClock.elapsedRealtime(), immediate = true)
+                }
+            }
+        }
+
         /** Toglie i pannelli oscuranti (schermo spento, schermata di blocco). Sicuro da qualsiasi thread. */
         fun clearMasksNow() {
             instance?.let { service -> service.handler.post { service.clearMasks() } }

@@ -288,6 +288,12 @@ viene ignorato e il suo Chat ID finisce nel Registro Allarmi. I messaggi modific
 | `/blocca <dominio o parola>` | Con un punto è un dominio (e i suoi sottodomini), altrimenti una parola chiave: *"🚫 Bloccato: ..."* |
 | `/consenti <dominio>` | Aggiunge il dominio alla whitelist: *"✅ Consentito: ..."* |
 | `/aiuto` | Elenco dei comandi (inviato anche al collegamento del bot) |
+| *foto con didascalia* | La foto (o un'immagine inviata come file, max 8 MB) viene scaricata, ridotta a 800 px e aggiunta ai pannelli oscuranti, che si attivano da soli; la didascalia diventa la frase. Oltre 10 foto esce la più vecchia. Risposta: *"🖼️ Foto aggiunta ai pannelli oscuranti (3/10 attive) · Frase: ..."* |
+| `/frase <testo>` | Cambia la frase dei pannelli (`/frase off` o `/frase vuota` la toglie) |
+| `/foto` | Stato dei pannelli con le foto: attivi, quante foto, frase |
+| `/cancella_foto` | Toglie tutte le foto: tornano i pannelli scuri |
+
+Foto e frase cambiate dal bot compaiono **subito** anche sui pannelli già a schermo.
 
 I comandi arrivano con `getUpdates` in long polling (una richiesta aperta fino a 50 secondi, risposta appena
 arriva un messaggio). L'`offset` dell'ultimo `update_id` è salvato su disco prima di eseguire il comando, quindi
@@ -320,7 +326,8 @@ adb reverse tcp:8081 tcp:8081
 ```
 
 Con questa proprietà il manifest abilita anche l'HTTP in chiaro; senza (la build normale) resta disabilitato.
-Il server finto deve rispondere a `getUpdates` e `sendMessage` come la Bot API (anche con 429 e `retry_after`).
+Il server finto deve rispondere a `getUpdates` e `sendMessage` come la Bot API (anche con 429 e `retry_after`) e,
+per le foto, a `getFile` e al download da `/file/bot<token>/<percorso>`.
 Dopo le prove va ricompilata la release senza la proprietà.
 
 ## Consumi
@@ -373,8 +380,11 @@ CutBet è un deterrente efficace, non una barriera assoluta. In particolare:
 - i pannelli oscuranti usano finestre di accessibilità (`TYPE_ACCESSIBILITY_OVERLAY`, nessun permesso
   "Mostra sopra altre app"); la divisione in contenitori dipende da come l'app espone i suoi elementi:
   verificata dal vivo su Chrome (articolo con banner, pagina di un gruppo), su Subito/Facebook reali solo con
-  gli unit test. Durante uno scorrimento in Chrome il pannello può sparire per un istante e ricomparire
-  appena la pagina si ferma (Chrome non comunica lo spostamento esatto);
+  gli unit test. Durante lo scorrimento ogni pannello rilegge solo la posizione del nodo che copre
+  (`ScrollTracking`, eventi ogni 16 ms) e la schermata viene rianalizzata al massimo ogni 150 ms, così anche i
+  banner che entrano nello schermo vengono coperti; nelle prove sull'emulatore restano coperti in ogni
+  fotogramma per scorrimenti singoli e a riposo, ma in raffiche di fling molto violente un banner può restare
+  scoperto per qualche fotogramma nel primo secondo, finché Chrome non aggiorna le posizioni;
 - un browser con **DNS-over-HTTPS** configurato per indirizzo IP (o verso un resolver non in lista), un'altra app VPN
   o un proxy aggirano il filtro DNS;
 - `crt.sh` è un servizio pubblico gratuito che risponde spesso con errori 502 o timeout: la scoperta via

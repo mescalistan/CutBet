@@ -63,6 +63,7 @@ class TelegramCommandPoller(
     private val zone: ZoneId get() = ZoneId.systemDefault()
 
     private val app get() = context.applicationContext as SafeGuardApp
+    private fun currentToken(): String = app.telegram.config.snapshot.token.orEmpty()
 
     fun start() {
         if (job?.isActive == true) return
@@ -146,7 +147,38 @@ class TelegramCommandPoller(
                 "❌ Dominio non valido: \"$target\". Esempio: /consenti miabanca.it"
             }
         }
-        is RemoteCommand.MissingArgument -> "ℹ️ Manca il dominio o la parola: ${command.command} <dominio>"
+        is RemoteCommand.Photo -> {
+            val store = app.maskImages
+            when (val file = transport.downloadFile(currentToken(), command.fileId, TelegramCommands.MAX_PHOTO_BYTES)) {
+                is DownloadResult.Failed -> "❌ Foto non scaricata: ${file.description}"
+                is DownloadResult.Ok -> {
+                    if (store.importBytes(file.bytes, fifo = true)) {
+                        store.setEnabled(true)
+                        if (command.caption.isNotBlank()) store.setCaption(command.caption)
+                        val s = store.settings.value
+                        TelegramCommands.photoAddedReply(s.images.size, com.zerobet.safeguard.mask.MaskImageFiles.MAX_IMAGES, s.caption)
+                    } else {
+                        "❌ Immagine non leggibile: invia una foto JPEG o PNG."
+                    }
+                }
+            }
+        }
+        is RemoteCommand.PhotoRejected -> "❌ Foto non aggiunta: ${command.reason}."
+        is RemoteCommand.SetCaption -> {
+            app.maskImages.setCaption(command.text)
+            if (command.text.isBlank()) "💬 Frase tolta: sui pannelli resta solo la foto." else "💬 Frase dei pannelli: \"${app.maskImages.settings.value.caption}\""
+        }
+        is RemoteCommand.PhotoStatus -> {
+            val s = app.maskImages.settings.value
+            TelegramCommands.photoStatusReply(s.enabled, s.images.size, com.zerobet.safeguard.mask.MaskImageFiles.MAX_IMAGES, s.caption)
+        }
+        is RemoteCommand.ClearPhotos -> {
+            val n = app.maskImages.settings.value.images.size
+            app.maskImages.clearAll()
+            "🗑️ Foto rimosse ($n): i pannelli tornano scuri."
+        }
+        is RemoteCommand.MissingArgument -> if (command.command == "/frase") "ℹ️ Scrivi la frase: /frase Pensa a chi ti vuole bene (oppure /frase off)"
+            else "ℹ️ Manca il dominio o la parola: ${command.command} <dominio>"
         is RemoteCommand.Unknown -> "❓ Comando ${command.command} non riconosciuto.\n\n" + TelegramCommands.HELP_TEXT
     }
 

@@ -19,8 +19,15 @@ enum class ItemRole {
     CONTENT,
 }
 
-/** Un contenitore della schermata con i testi del suo sottoalbero. */
-data class ScreenItem(val segments: List<String>, val box: Box, val role: ItemRole)
+/**
+ * Un contenitore della schermata con i testi del suo sottoalbero.
+ * [anchor]: il nodo di accessibilità da cui viene (per seguirlo durante lo scorrimento);
+ * [viewport]: area visibile della lista/pagina che lo contiene (i pannelli non escono da lì).
+ */
+data class ScreenItem(
+    val segments: List<String>, val box: Box, val role: ItemRole,
+    val anchor: Any? = null, val viewport: Box? = null,
+)
 
 data class ScreenModel(
     val items: List<ScreenItem>,
@@ -37,8 +44,11 @@ sealed class GuardDecision {
     /** Il contenuto principale è vietato: si esce (Indietro, poi Home). */
     data class CloseScreen(val hit: InAppHit, val reason: String) : GuardDecision()
 
-    /** Contesto innocuo: si oscurano solo i box indicati, l'app resta utilizzabile. */
-    data class MaskRects(val boxes: List<Box>, val hits: List<InAppHit>) : GuardDecision()
+    /**
+     * Contesto innocuo: si oscurano solo i box indicati, l'app resta utilizzabile.
+     * [sources]: per ogni box l'elemento da cui viene (nodo da seguire durante lo scorrimento).
+     */
+    data class MaskRects(val boxes: List<Box>, val hits: List<InAppHit>, val sources: List<ScreenItem> = emptyList()) : GuardDecision()
 }
 
 /**
@@ -138,11 +148,11 @@ object ScreenDecider {
 
         // 5) Contesto innocuo: si oscurano i soli box (annunci, widget "Calcola rata", post isolati),
         //    insieme all'etichetta "Sponsorizzato" se sta nel contenitore subito sopra o sotto.
-        val boxes = risky.map { (item, hit) -> withAdjacentFinanceDetails(item, hit, content, withAdjacentAdLabel(item, content)).intersect(model.screen) }
-            .filter { it.width >= MIN_MASK_SIDE && it.height >= MIN_MASK_SIDE }
-            .distinct()
-        if (boxes.isEmpty()) return GuardDecision.None
-        return GuardDecision.MaskRects(boxes, risky.map { it.second })
+        val targets = risky.map { (item, hit) -> item to withAdjacentFinanceDetails(item, hit, content, withAdjacentAdLabel(item, content)).intersect(model.screen) }
+            .filter { (_, b) -> b.width >= MIN_MASK_SIDE && b.height >= MIN_MASK_SIDE }
+            .distinctBy { it.second }
+        if (targets.isEmpty()) return GuardDecision.None
+        return GuardDecision.MaskRects(targets.map { it.second }, risky.map { it.second }, targets.map { it.first })
     }
 
     /** Titolo di una pagina/app/gruppo a rischio: le regole delle ricerche su un testo breve, o quelle dei contenuti. */

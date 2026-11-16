@@ -137,6 +137,19 @@ class MaskImageFiles(private val dir: File, val maxImages: Int = MAX_IMAGES) {
         }
     }
 
+    /** Rotazione FIFO: se lo store è pieno toglie le foto più vecchie. @return i nomi rimossi. */
+    fun makeRoom(): List<String> {
+        val removed = ArrayList<String>()
+        val all = list()
+        var excess = all.size - maxImages + 1
+        for (f in all) {
+            if (excess <= 0) break
+            if (f.delete()) removed += f.name
+            excess--
+        }
+        return removed
+    }
+
     fun delete(name: String): Boolean {
         if (name.contains('/') || name.contains('\\') || !name.endsWith(EXTENSION)) return false
         return File(dir, name).delete()
