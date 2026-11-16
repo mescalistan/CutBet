@@ -99,6 +99,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         instance = this
         app = application as SafeGuardApp
         masks = AdMaskOverlayManager(this)
+        app.maskImages.preload()   // foto del tutore pronte in memoria prima del primo pannello
         appLabel = getString(R.string.app_name).lowercase()
         ignoredPackages = buildIgnoredPackages()
         // Nessun filtro di sistema: il servizio segue tutte le app (social, video, news, store).

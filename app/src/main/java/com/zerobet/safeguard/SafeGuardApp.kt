@@ -41,6 +41,8 @@ class SafeGuardApp : Application() {
     }
     /** Avvisi remoti al tutore via bot Telegram (coda offline nello storage Direct Boot). */
     val telegram: TelegramNotifier by lazy { TelegramNotifier(this) }
+    /** Foto del tutore mostrate sui pannelli oscuranti (copie locali nello storage Direct Boot). */
+    val maskImages: com.zerobet.safeguard.mask.CustomMaskImageStore by lazy { com.zerobet.safeguard.mask.CustomMaskImageStore(this) }
     val pinManager: PinManager by lazy {
         PinManager(this).also { pin ->
             pin.onWrongPin = { attempt, locked ->

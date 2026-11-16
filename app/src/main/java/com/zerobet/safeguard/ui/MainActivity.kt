@@ -61,7 +61,32 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         // Uscendo dall'app (o aprendo una schermata di sistema) la dashboard si richiude:
-        // al rientro verrà richiesto di nuovo il PIN.
-        if (!isChangingConfigurations) unlocked = false
+        // al rientro verrà richiesto di nuovo il PIN. Unica eccezione: il selettore di foto aperto
+        // dal tutore, a patto di tornare entro [PICKER_GRACE_MS].
+        if (isChangingConfigurations) return
+        if (pickerOpenedAt > 0L) {
+            stoppedForPickerAt = android.os.SystemClock.elapsedRealtime()
+            pickerOpenedAt = 0L
+            return
+        }
+        unlocked = false
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val stopped = stoppedForPickerAt
+        stoppedForPickerAt = 0L
+        if (stopped > 0L && android.os.SystemClock.elapsedRealtime() - stopped > PICKER_GRACE_MS) unlocked = false
+    }
+
+    companion object {
+        private const val PICKER_GRACE_MS = 2 * 60_000L
+        @Volatile private var pickerOpenedAt = 0L
+        @Volatile private var stoppedForPickerAt = 0L
+
+        /** Da chiamare subito prima di aprire il selettore di foto: la dashboard resta sbloccata al ritorno. */
+        fun markPickerOpening() {
+            pickerOpenedAt = android.os.SystemClock.elapsedRealtime()
+        }
     }
 }

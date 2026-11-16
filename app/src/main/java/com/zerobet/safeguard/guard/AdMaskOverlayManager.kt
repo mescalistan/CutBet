@@ -8,18 +8,17 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.ViewConfiguration
-import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.util.Log
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
-import com.zerobet.safeguard.R
+import com.zerobet.safeguard.SafeGuardApp
+import com.zerobet.safeguard.mask.CustomMaskImageStore
+import com.zerobet.safeguard.mask.MaskLayout
+import com.zerobet.safeguard.mask.MaskPanelViews
+import com.zerobet.safeguard.mask.MaskPolicy
+import com.zerobet.safeguard.mask.PhotoRotation
 
 /**
  * Pannelli opachi sopra i singoli banner e box a rischio, al posto di chiudere l'app.
@@ -37,7 +36,15 @@ import com.zerobet.safeguard.R
  */
 class AdMaskOverlayManager(private val service: AccessibilityService) {
 
-    private class Panel(val view: View, val params: WindowManager.LayoutParams, var box: Box)
+    /** Pannello mostrato: [layout], foto e dimensioni decidono se la vista va ricostruita. */
+    private class Panel(
+        val view: View, val params: WindowManager.LayoutParams, var box: Box,
+        val layout: MaskLayout, val photo: String?, val label: String,
+    )
+
+    /** Foto del tutore ("ancoraggio affettivo"), se l'app ne ha. */
+    private val photos: CustomMaskImageStore? = (service.application as? SafeGuardApp)?.maskImages
+    private val rotation = PhotoRotation()
 
     private val windowManager = service.getSystemService(WindowManager::class.java)
     private val panels = ArrayList<Panel>()
@@ -70,9 +77,26 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
         // Stesse posizioni: nessun lavoro.
         if (boxes.size == panels.size && boxes.zip(panels).all { (b, p) -> b == p.box }) return false
         while (panels.size > boxes.size) remove(panels.removeAt(panels.size - 1))
+        val settings = photos?.settings?.value
         boxes.forEachIndexed { i, box ->
+            val m = margin
+            val height = box.height + 2 * m
+            val layout = MaskPolicy.layoutFor(height, density, hasPhotos = settings?.images?.isNotEmpty() == true, enabled = settings?.enabled == true)
+            // Ogni pannello tiene la sua foto finché la schermata non cambia: niente lampeggi.
+            val photo = if (layout == MaskLayout.DEFAULT_DARK || settings == null) null
+            else settings.images.getOrNull(rotation.photoFor(i, settings.images.size))
             val panel = panels.getOrNull(i)
-            if (panel == null) add(box, label) else move(panel, box)
+            val sameLook = panel != null && panel.layout == layout && panel.photo == photo && panel.label == label &&
+                panel.box.width == box.width && panel.box.height == box.height
+            when {
+                panel == null -> add(box, label, layout, photo, settings?.caption.orEmpty())?.let { panels += it }
+                sameLook -> move(panel, box)
+                else -> {
+                    remove(panel)
+                    val fresh = add(box, label, layout, photo, settings?.caption.orEmpty())
+                    if (fresh != null) panels[i] = fresh else panels.removeAt(i)
+                }
+            }
         }
         return true
     }
@@ -101,6 +125,7 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
         panels.forEach { remove(it) }
         panels.clear()
         ownerPackage = null
+        rotation.reset()
     }
 
     private var margin = (MARGIN_DP * density).toInt()
@@ -114,7 +139,7 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun add(box: Box, label: String) {
+    private fun add(box: Box, label: String, layout: MaskLayout, photo: String?, caption: String): Panel? {
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -127,7 +152,7 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
             title = "CutBetAdMask"
         }
         layoutFor(box, params)
-        val view = buildView(box, label)
+        val view = buildView(params.height, label, layout, photo, caption)
         // Tocco consumato (il link pubblicitario sotto non si apre); trascinamento rigiocato sull'app.
         view.setOnTouchListener { _, e ->
             when (e.actionMasked) {
@@ -144,11 +169,12 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
             }
             true
         }
-        try {
+        return try {
             windowManager.addView(view, params)
-            panels += Panel(view, params, box)
+            Panel(view, params, box, layout, photo, label)
         } catch (e: Exception) {
             Log.w(TAG, "Pannello non mostrato: ${e.javaClass.simpleName}")
+            null
         }
     }
 
@@ -206,42 +232,31 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
         }
     }
 
-    private fun buildView(box: Box, label: String): View {
-        val dp = { v: Float -> TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, service.resources.displayMetrics).toInt() }
-        val compact = box.height < dp(56f)
-        return LinearLayout(service).apply {
-            orientation = if (compact) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
-            background = GradientDrawable().apply {
-                setColor(PANEL_COLOR)
-                cornerRadius = dp(12f).toFloat()
+    /** Pannello scuro, oppure con la foto del tutore (banner grande o striscia sottile). */
+    private fun buildView(heightPx: Int, label: String, layout: MaskLayout, photo: String?, caption: String): View {
+        val store = photos
+        if (layout == MaskLayout.DEFAULT_DARK || photo == null || store == null) {
+            return MaskPanelViews.dark(service, heightPx, label)
+        }
+        return try {
+            when (layout) {
+                MaskLayout.FULL_BANNER -> MaskPanelViews.build(
+                    service, layout, heightPx, label, caption, photo = store.bitmap(photo), blurred = store.blurred(photo)
+                )
+                else -> MaskPanelViews.build(
+                    service, layout, heightPx, label, caption,
+                    thumb = store.thumbnail(photo, (heightPx - (8 * density).toInt()).coerceAtLeast(16))
+                )
             }
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-            addView(ImageView(service).apply {
-                setImageResource(R.drawable.ic_shield)
-                setColorFilter(Color.argb(200, 255, 255, 255))
-                val size = dp(if (compact) 16f else 24f)
-                layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                    if (compact) marginEnd = dp(6f) else bottomMargin = dp(4f)
-                }
-            })
-            addView(TextView(service).apply {
-                text = label
-                setTextColor(Color.argb(210, 255, 255, 255))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                gravity = Gravity.CENTER
-                maxLines = if (compact) 1 else 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            })
+        } catch (e: Exception) {
+            Log.w(TAG, "Foto non disponibile: ${e.javaClass.simpleName}")
+            MaskPanelViews.dark(service, heightPx, label)
         }
     }
 
     companion object {
         private const val TAG = "CutBetAdMask"
         const val MARGIN_DP = 8f
-        /** #1E222A pieno: con l'alfa F5 il testo dell'annuncio restava leggibile in trasparenza. */
-        private val PANEL_COLOR = Color.parseColor("#FF1E222A")
         const val LABEL_AD = "Contenuto pubblicitario oscurato da CutBet"
         const val LABEL_CONTENT = "Contenuto oscurato da CutBet"
         const val LABEL_MAIL = "Email oscurata da CutBet"

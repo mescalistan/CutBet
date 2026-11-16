@@ -415,6 +415,12 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
             AppearanceCard()
         }
 
+        // ---- Foto del tutore sui pannelli oscuranti ----
+        item {
+            Spacer(Modifier.height(8.dp))
+            MaskImagesCard()
+        }
+
         // ---- Rimozione legittima dell'app ----
         item {
             Spacer(Modifier.height(8.dp))
