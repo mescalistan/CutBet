@@ -54,20 +54,27 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
 
     val isShowing: Boolean get() = panels.isNotEmpty()
 
-    /** Riporta i pannelli esattamente sui [boxes] indicati, riusando le finestre esistenti. */
-    fun show(packageName: String, boxes: List<Box>, label: String) {
+    /**
+     * Riporta i pannelli esattamente sui [boxes] indicati, riusando le finestre esistenti.
+     * [marginDp]: margine di sicurezza intorno al box (0 nelle liste, per non coprire le righe vicine).
+     * @return true se qualcosa è cambiato (nuovi pannelli o posizioni diverse).
+     */
+    fun show(packageName: String, boxes: List<Box>, label: String, marginDp: Float = MARGIN_DP): Boolean {
         if (boxes.isEmpty()) {
+            val had = panels.isNotEmpty()
             clear()
-            return
+            return had
         }
         ownerPackage = packageName
+        margin = (marginDp * density).toInt()
         // Stesse posizioni: nessun lavoro.
-        if (boxes.size == panels.size && boxes.zip(panels).all { (b, p) -> b == p.box }) return
+        if (boxes.size == panels.size && boxes.zip(panels).all { (b, p) -> b == p.box }) return false
         while (panels.size > boxes.size) remove(panels.removeAt(panels.size - 1))
         boxes.forEachIndexed { i, box ->
             val panel = panels.getOrNull(i)
             if (panel == null) add(box, label) else move(panel, box)
         }
+        return true
     }
 
     /**
@@ -96,10 +103,10 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
         ownerPackage = null
     }
 
-    private fun margin(): Int = (MARGIN_DP * density).toInt()
+    private var margin = (MARGIN_DP * density).toInt()
 
     private fun layoutFor(box: Box, params: WindowManager.LayoutParams) {
-        val m = margin()
+        val m = margin
         params.x = box.left - m
         params.y = box.top - m
         params.width = box.width + 2 * m
@@ -232,10 +239,11 @@ class AdMaskOverlayManager(private val service: AccessibilityService) {
 
     companion object {
         private const val TAG = "CutBetAdMask"
-        private const val MARGIN_DP = 8f
+        const val MARGIN_DP = 8f
         /** #1E222A pieno: con l'alfa F5 il testo dell'annuncio restava leggibile in trasparenza. */
         private val PANEL_COLOR = Color.parseColor("#FF1E222A")
         const val LABEL_AD = "Contenuto pubblicitario oscurato da CutBet"
         const val LABEL_CONTENT = "Contenuto oscurato da CutBet"
+        const val LABEL_MAIL = "Email oscurata da CutBet"
     }
 }

@@ -63,7 +63,8 @@ object ContentClassifier {
         if (rawText.length < 12) return null
         // Normalizzazione: minuscolo e separatori ridotti a uno spazio, con spazi ai bordi, così
         // " tan " corrisponde solo alla parola intera e non a "tanto" o "distanza".
-        val text = " " + NON_WORD.replace(rawText.toString().lowercase(), " ").trim() + " "
+        // Indirizzi email e handle non sono testo: "tradingonmattia@inwind.it" non parla di trading.
+        val text = " " + NON_WORD.replace(TextSanitizer.stripIdentifiers(rawText.toString()).lowercase(), " ").trim() + " "
 
         var best: ContentHit? = null
         for ((category, phrases) in RULES) {

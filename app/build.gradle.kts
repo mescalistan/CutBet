@@ -44,8 +44,8 @@ android {
         applicationId = "com.zerobet.safeguard"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.4.2"
+        versionCode = 9
+        versionName = "1.4.3"
 
         // URL dell'API dei bot Telegram. Solo per le prove con un server finto locale:
         // ./gradlew assembleRelease -PtelegramApiBase=http://127.0.0.1:8081 (abilita anche HTTP in chiaro).

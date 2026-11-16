@@ -250,9 +250,12 @@ object SearchQueryClassifier {
     // Classificazione
     // ---------------------------------------------------------------------------------------
 
-    /** Minuscolo, senza accenti, separatori ridotti a un solo spazio. */
+    /**
+     * Minuscolo, senza accenti, separatori ridotti a un solo spazio. Indirizzi email e handle
+     * ("tradingonmattia@inwind.it", "@betta_92") vengono tolti prima: non sono parole del testo.
+     */
     fun normalize(raw: String): String {
-        val noAccents = DIACRITICS.replace(Normalizer.normalize(raw.lowercase(), Normalizer.Form.NFD), "")
+        val noAccents = DIACRITICS.replace(Normalizer.normalize(TextSanitizer.stripIdentifiers(raw).lowercase(), Normalizer.Form.NFD), "")
         return NON_WORD.replace(noAccents, " ").trim()
     }
 

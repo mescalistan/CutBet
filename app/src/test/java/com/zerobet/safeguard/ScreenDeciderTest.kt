@@ -107,6 +107,20 @@ class ScreenDeciderTest {
     }
 
     @Test
+    fun `widget calcola rata spezzato in piu elementi viene oscurato tutto, la descrizione no`() {
+        val descr = content("Gomme invernali nuove, climatizzatore, radio con bluetooth.")
+        val title = content("Calcola rata finanziamento", height = 60)
+        val rates = content("TAN 6,90% TAEG 8,12% · 48 rate da 199 €", height = 50)
+        val button = content("Richiedi finanziamento", height = 90)
+        val after = content("Contatta il venditore", height = 60)
+        val d = decide(header("Subito", "Fiat Panda 1.2 Easy 2019"), descr, title, rates, button, after, marketplace = true)
+        assertTrue(d.toString(), d is GuardDecision.MaskRects)
+        val box = (d as GuardDecision.MaskRects).boxes.single()
+        assertEquals(title.box.top, box.top)
+        assertEquals(button.box.bottom, box.bottom)
+    }
+
+    @Test
     fun `articolo di giornale con un banner di trading a meta pagina oscura solo il banner`() {
         val ad = content("Sponsorizzato", "Trading Online", "Investi nel Forex con leva 1:500", "Iscriviti")
         val d = decide(

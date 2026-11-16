@@ -400,6 +400,12 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Webmail (mail.google.com, mail.libero.it...): stessa regola delle app di posta.
+        if (MailApps.isMail(pkg, host)) {
+            handleMail(pkg, root, now)
+            return
+        }
+
         // Nelle pagine dei motori di ricerca decide solo la ricerca scritta dall'utente (già
         // controllata sopra): i risultati di una ricerca innocua come "scommessa vinta con gli
         // amici" contengono per forza parole a rischio e non devono far chiudere la pagina.
@@ -572,6 +578,13 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             return
         }
 
+        // a') App di posta: elenco -> si oscurano le sole righe di spam, mai chiusura; email a
+        //     rischio aperta -> un Indietro (si torna all'elenco). Vedi MailRules.
+        if (MailApps.isMail(pkg, null)) {
+            handleMail(pkg, root, now)
+            return
+        }
+
         // b) App della banca autorizzata (home banking, app collegate come PosteID, o con il nome della
         //    banca): libera, tranne le sezioni prestiti/investimenti/trading riconosciute dal titolo.
         if (isAuthorizedBankApp(pkg)) {
@@ -614,18 +627,39 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** Posta: oscura le righe di spam nell'elenco, chiude con un solo Indietro un'email a rischio aperta. */
+    private fun handleMail(pkg: String, root: AccessibilityNodeInfo, now: Long) {
+        when (val decision = MailRules.decide(buildModel(root, marketplace = false))) {
+            is GuardDecision.CloseScreen -> {
+                clearMasks()
+                blockInApp(pkg, decision.hit, now)
+            }
+            // Righe di una lista: nessun margine, per non coprire mittente e oggetto delle email vicine.
+            else -> applyMasks(pkg, decision, now, label = AdMaskOverlayManager.LABEL_MAIL, marginDp = 0f)
+        }
+    }
+
     // ---------------------------------------------------------------------------------------
     // Oscuramento dei singoli banner e box
     // ---------------------------------------------------------------------------------------
 
-    private fun applyMasks(pkg: String, decision: GuardDecision, now: Long) {
+    private fun applyMasks(
+        pkg: String, decision: GuardDecision, now: Long, label: String? = null, marginDp: Float = AdMaskOverlayManager.MARGIN_DP,
+    ) {
         val m = masks ?: return
         if (decision !is GuardDecision.MaskRects || GuardState.lockScreenVisible) {
             clearMasks(resetScan = false)
             return
         }
         val onlyAds = decision.hits.all { it.kind == InAppKind.AD }
-        m.show(pkg, decision.boxes, if (onlyAds) AdMaskOverlayManager.LABEL_AD else AdMaskOverlayManager.LABEL_CONTENT)
+        val changed = m.show(pkg, decision.boxes, label ?: if (onlyAds) AdMaskOverlayManager.LABEL_AD else AdMaskOverlayManager.LABEL_CONTENT, marginDp)
+        // Pannelli appena mostrati o spostati: si rilegge la schermata quando è ferma. Durante
+        // un'animazione di apertura/ritorno le posizioni lette possono essere ancora in movimento.
+        if (changed) {
+            handler.removeCallbacks(settleRescan)
+            settlePackage = pkg
+            handler.postDelayed(settleRescan, MASK_SETTLE_MS)
+        }
         // Registro: una riga per insieme di contenuti oscurati (non a ogni scorrimento).
         val key = pkg + decision.hits.joinToString("|") { it.term }
         if (key != lastMaskLogKey) {
@@ -638,6 +672,14 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
                 "${hit.category.label} · \"${hit.excerpt}\""
             )
         }
+    }
+
+    private var settlePackage: String? = null
+    private val settleRescan = Runnable {
+        val pkg = settlePackage ?: return@Runnable
+        lastScreenHash = 0
+        lastScanKey = null
+        scheduleScan(pkg, SystemClock.elapsedRealtime(), immediate = true)
     }
 
     /** Toglie subito i pannelli; con [resetScan] la schermata verrà riletta al prossimo evento. */
@@ -973,6 +1015,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         private const val IN_APP_ESCALATION_MS = 5_000L
         private const val MAX_NODES = 600
         private const val MAX_MODEL_NODES = 1_500
+        private const val MASK_SETTLE_MS = 700L
         private const val MAX_ITEM_SEGMENTS = 40
         private const val SPLIT_HEIGHT_RATIO = 0.30
         private const val SPLIT_SEGMENTS = 8
@@ -1125,7 +1168,6 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             "com.google.android.contacts", "com.samsung.android.dialer", "com.android.phone",
             "com.google.android.apps.messaging", "com.samsung.android.messaging",
             "com.whatsapp", "com.whatsapp.w4b", "org.thoughtcrime.securesms",
-            "com.google.android.gm", "com.microsoft.office.outlook",
             // tastiere, fotocamera, galleria, orologio, calcolatrice
             "com.google.android.inputmethod.latin", "com.samsung.android.honeyboard", "com.touchtype.swiftkey",
             "com.android.camera", "com.android.camera2", "com.google.android.GoogleCamera", "com.sec.android.app.camera",

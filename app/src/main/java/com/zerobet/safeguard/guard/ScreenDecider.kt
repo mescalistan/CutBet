@@ -138,7 +138,7 @@ object ScreenDecider {
 
         // 5) Contesto innocuo: si oscurano i soli box (annunci, widget "Calcola rata", post isolati),
         //    insieme all'etichetta "Sponsorizzato" se sta nel contenitore subito sopra o sotto.
-        val boxes = risky.map { (item, _) -> withAdjacentAdLabel(item, content).intersect(model.screen) }
+        val boxes = risky.map { (item, hit) -> withAdjacentFinanceDetails(item, hit, content, withAdjacentAdLabel(item, content)).intersect(model.screen) }
             .filter { it.width >= MIN_MASK_SIDE && it.height >= MIN_MASK_SIDE }
             .distinct()
         if (boxes.isEmpty()) return GuardDecision.None
@@ -176,6 +176,34 @@ object ScreenDecider {
                     maxOf(box.right, neighbor.box.right), maxOf(box.bottom, neighbor.box.bottom))
             }
         }
+        return box
+    }
+
+    /** Righe tipiche di un widget di finanziamento: tassi, rate, importi, pulsanti di richiesta. */
+    private val FINANCE_DETAIL = Regex(
+        "(?<![\\p{L}\\p{N}])(tan|taeg|rata|rate|mesi|interessi|anticipo|finanziamento|finanziabile|richiedi|calcola|simula|paga a rate|prestito)(?![\\p{L}\\p{N}])|€|%",
+        RegexOption.IGNORE_CASE,
+    )
+    private const val FINANCE_NEIGHBORS = 3
+
+    /**
+     * Widget "Calcola rata": Android spesso non espone il riquadro che lo contiene, quindi titolo,
+     * riga "TAN 6,90% TAEG 8,12%" e pulsante "Richiedi finanziamento" arrivano come elementi
+     * separati. Per un box di prestiti si oscurano anche i vicini (fino a 3 sotto e 1 sopra) che
+     * sono chiaramente dettagli del finanziamento.
+     */
+    private fun withAdjacentFinanceDetails(item: ScreenItem, hit: InAppHit, content: List<ScreenItem>, start: Box): Box {
+        if (hit.category != ContentCategory.LOANS) return start
+        val index = content.indexOf(item)
+        if (index < 0) return start
+        var box = start
+        fun absorb(n: ScreenItem): Boolean {
+            val related = n.segments.isNotEmpty() && n.segments.all { it.length <= 90 && FINANCE_DETAIL.containsMatchIn(it) }
+            if (related) box = Box(minOf(box.left, n.box.left), minOf(box.top, n.box.top), maxOf(box.right, n.box.right), maxOf(box.bottom, n.box.bottom))
+            return related
+        }
+        for (j in index + 1..minOf(content.size - 1, index + FINANCE_NEIGHBORS)) if (!absorb(content[j])) break
+        content.getOrNull(index - 1)?.let { absorb(it) }
         return box
     }
 
