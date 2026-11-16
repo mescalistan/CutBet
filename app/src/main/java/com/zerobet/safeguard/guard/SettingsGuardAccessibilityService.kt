@@ -4,8 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.accessibilityservice.GestureDescription
-import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -74,6 +72,10 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
 
     // Stato del filtro in-app
     private var lastScreenHash = 0
+    /** Pannelli oscuranti sopra banner e box a rischio (vedi [AdMaskOverlayManager]). */
+    private var masks: AdMaskOverlayManager? = null
+    /** Chiave dell'ultimo insieme di pannelli registrato nel Registro Allarmi. */
+    private var lastMaskLogKey: String? = null
     private var lastSearchBlockAt = 0L
     private var lastInAppBlockAt = 0L
     private var lastAppBlockAt = 0L
@@ -96,6 +98,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         app = application as SafeGuardApp
+        masks = AdMaskOverlayManager(this)
         appLabel = getString(R.string.app_name).lowercase()
         ignoredPackages = buildIgnoredPackages()
         // Nessun filtro di sistema: il servizio segue tutte le app (social, video, news, store).
@@ -109,8 +112,23 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         val type = event.eventType
         if (type and HANDLED_EVENTS == 0) return
         val pkg = event.packageName?.toString() ?: return
+        // Pannelli oscuranti: via subito se si cambia app o si torna alla Home (anche dai package
+        // ignorati, come il launcher); seguono lo scorrimento della stessa app.
+        masks?.let { m ->
+            if (m.isShowing) {
+                val owner = m.ownerPackage
+                if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != owner && pkg != packageName) {
+                    clearMasks()
+                } else if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && pkg == owner) {
+                    val dy = if (android.os.Build.VERSION.SDK_INT >= 28) event.scrollDeltaY else 0
+                    if (dy != 0) m.offset(dy, resources.displayMetrics.heightPixels) else clearMasks()
+                }
+            }
+        }
         // Scarto in O(1): una ricerca in HashSet, nessuna lettura dello schermo.
         if (pkg in ignoredPackages) return
+        // Nei browser la pagina va riletta quando si scorre (nuovi banner da oscurare).
+        if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && pkg in BROWSER_URL_BARS) lastScanKeyAt = SystemClock.elapsedRealtime()
         // Cambio di finestra e testo digitato si valutano subito; scorrimento e aggiornamenti del
         // contenuto (decine al secondo) solo quando la schermata si è fermata.
         val immediate = type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
@@ -315,6 +333,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
      * alla Home (che chiude lo schermo diviso), poi il PIN si apre a tutto schermo.
      */
     private fun showLockScreen() {
+        clearMasks()
         if (isMultiWindow()) {
             performGlobalAction(GLOBAL_ACTION_HOME)
             app.securityLog.grouped(
@@ -387,17 +406,32 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         // I siti aperti da lì restano coperti dal filtro DNS e dall'analisi dei contenuti.
         if (pkg in SEARCH_APPS || (host != null && SearchQueryClassifier.isSearchEngine(host))) return
 
-        // b) Analisi dei testi visibili (pagina web, banner pubblicitario, schermata di un'app).
-        val text = StringBuilder()
-        collectText(root, text, 0, CONTENT_TEXT_CHARS)
-        val hit = ContentClassifier.classify(text)
-        if (hit == null) {
-            // c') Annunci dentro pagine web normali ("Sponsorizzato · Investi nel Forex"): stessa
-            //      regola delle app (etichetta di annuncio vicino a un termine a rischio). Si
-            //      scorre oltre l'annuncio senza bloccare né apprendere il sito che lo ospita.
-            InAppContentAndAdFilter.findAd(readScreen(root).segments)?.let { blockInApp(pkg, it, now) }
+        // b) La pagina per contenitori: intestazione, singoli box e banner (vedi ScreenDecider).
+        val marketplace = Marketplaces.isMarketplace(pkg, host)
+        val model = buildModel(root, marketplace)
+        val decision = ScreenDecider.decide(model)
+        if (decision is GuardDecision.CloseScreen) {
+            clearMasks()
+            blockContent(decision.hit.category.label, now, host.orEmpty())
             return
         }
+        val masked = (decision as? GuardDecision.MaskRects)?.boxes.orEmpty()
+        // Testo della pagina SENZA i box oscurati: un banner di un casinò non rende "di gioco"
+        // l'articolo che lo ospita. I marketplace non si chiudono mai per i contenuti.
+        val text = StringBuilder()
+        if (!marketplace) {
+            for (item in model.items) {
+                if (masked.any { overlaps(it, item.box) }) continue
+                item.segments.forEach { text.append(it).append('\n') }
+                if (text.length > CONTENT_TEXT_CHARS) break
+            }
+        }
+        val hit = if (marketplace) null else ContentClassifier.classify(text)
+        if (hit == null) {
+            applyMasks(pkg, decision, now)
+            return
+        }
+        clearMasks()
         blockContent(hit.category.label, now, host.orEmpty())
 
         // c) Auto-apprendimento: solo per siti esterni. Mai per la banca in whitelist (lì si esce
@@ -561,11 +595,140 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             }
         }
 
-        // e) Pubblicità a rischio, poi contenuti dedicati (titoli di video, post, articoli).
-        val hit = InAppContentAndAdFilter.findAd(screen.segments)
-            ?: InAppContentAndAdFilter.findContent(screen.segments)
-            ?: return
-        blockInApp(pkg, hit, now)
+        // e) Pubblicità e contenuti a rischio. Controllo rapido sui testi: se nulla è sospetto non
+        //    si costruisce il modello per contenitori (e si tolgono i pannelli rimasti).
+        val suspicious = InAppContentAndAdFilter.findAd(screen.segments) != null ||
+            InAppContentAndAdFilter.findContent(screen.segments) != null ||
+            screen.segments.any { it.length <= 70 && SearchQueryClassifier.classify(it) != null }
+        if (!suspicious) {
+            clearMasks()
+            return
+        }
+        val decision = ScreenDecider.decide(buildModel(root, Marketplaces.isMarketplace(pkg, null)))
+        when (decision) {
+            is GuardDecision.CloseScreen -> {
+                clearMasks()
+                blockInApp(pkg, decision.hit, now)
+            }
+            else -> applyMasks(pkg, decision, now)
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Oscuramento dei singoli banner e box
+    // ---------------------------------------------------------------------------------------
+
+    private fun applyMasks(pkg: String, decision: GuardDecision, now: Long) {
+        val m = masks ?: return
+        if (decision !is GuardDecision.MaskRects || GuardState.lockScreenVisible) {
+            clearMasks(resetScan = false)
+            return
+        }
+        val onlyAds = decision.hits.all { it.kind == InAppKind.AD }
+        m.show(pkg, decision.boxes, if (onlyAds) AdMaskOverlayManager.LABEL_AD else AdMaskOverlayManager.LABEL_CONTENT)
+        // Registro: una riga per insieme di contenuti oscurati (non a ogni scorrimento).
+        val key = pkg + decision.hits.joinToString("|") { it.term }
+        if (key != lastMaskLogKey) {
+            lastMaskLogKey = key
+            val hit = decision.hits.first()
+            val name = appName(pkg)
+            app.securityLog.grouped(
+                "mask:$pkg:${hit.term}", EventType.CONTENT, Severity.INFO,
+                if (onlyAds) "Pubblicità oscurata su $name" else "Contenuto oscurato su $name",
+                "${hit.category.label} · \"${hit.excerpt}\""
+            )
+        }
+    }
+
+    /** Toglie subito i pannelli; con [resetScan] la schermata verrà riletta al prossimo evento. */
+    private fun clearMasks(resetScan: Boolean = true) {
+        val m = masks ?: return
+        if (!m.isShowing) return
+        m.clear()
+        lastMaskLogKey = null
+        if (resetScan) {
+            lastScreenHash = 0
+            lastScanKey = null
+        }
+    }
+
+    private fun overlaps(a: Box, b: Box): Boolean = !a.intersect(b).isEmpty
+
+    /**
+     * Modello della schermata per contenitori. I nodi grandi (almeno il 75% dello schermo), le
+     * liste e le pagine web sono contenitori: si scende nei figli. Ogni nodo più piccolo è un
+     * elemento con tutti i testi del suo sottoalbero. Fuori da liste/scroll, in alto, è
+     * intestazione. Un elemento a rischio grande o con molti testi viene suddiviso nei figli, così
+     * si oscura solo il banner e non l'intero articolo che lo contiene.
+     */
+    private fun buildModel(root: AccessibilityNodeInfo, marketplace: Boolean): ScreenModel {
+        val metrics = resources.displayMetrics
+        val screen = Box(0, 0, metrics.widthPixels, metrics.heightPixels)
+        val items = ArrayList<ScreenItem>()
+        val budget = intArrayOf(MAX_MODEL_NODES)
+        visitForModel(root, inScroll = false, depth = 0, screen, items, budget)
+        return ScreenModel(items, screen, marketplace)
+    }
+
+    private fun visitForModel(
+        node: AccessibilityNodeInfo, inScroll: Boolean, depth: Int, screen: Box,
+        items: MutableList<ScreenItem>, budget: IntArray,
+    ) {
+        if (budget[0]-- <= 0 || depth > MAX_DEPTH || !node.isVisibleToUser) return
+        val rect = android.graphics.Rect()
+        node.getBoundsInScreen(rect)
+        val box = Box(rect.left, rect.top, rect.right, rect.bottom)
+        val className = node.className?.toString().orEmpty()
+        val scrollContainer = node.isScrollable || SCROLL_CLASSES.any { className.endsWith(it) }
+        val container = depth == 0 || box.height >= screen.height * ScreenDecider.MAIN_CONTENT_RATIO || scrollContainer
+        if (container && node.childCount > 0) {
+            ownText(node)?.let { items += ScreenItem(listOf(it), box, roleOf(box, inScroll, screen)) }
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                visitForModel(child, inScroll || scrollContainer, depth + 1, screen, items, budget)
+                release(child)
+            }
+            return
+        }
+        val segments = ArrayList<String>()
+        collectSegments(node, segments, 0)
+        if (segments.isEmpty()) return
+        val role = roleOf(box, inScroll, screen)
+        val risky = InAppContentAndAdFilter.findAd(segments) != null || InAppContentAndAdFilter.findContent(segments) != null
+        if (role == ItemRole.CONTENT && risky && node.childCount > 1 &&
+            (box.height > screen.height * SPLIT_HEIGHT_RATIO || segments.size > SPLIT_SEGMENTS) && depth < MAX_DEPTH - 1
+        ) {
+            // Elemento a rischio troppo grande: si valutano i figli uno per uno.
+            val before = items.size
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                visitForModel(child, inScroll = true, depth + 1, screen, items, budget)
+                release(child)
+            }
+            if (items.size > before) return
+        }
+        items += ScreenItem(segments, box, role)
+    }
+
+    private fun roleOf(box: Box, inScroll: Boolean, screen: Box): ItemRole =
+        if (!inScroll && box.top < screen.height * HEADER_TOP_RATIO) ItemRole.HEADER else ItemRole.CONTENT
+
+    private fun ownText(node: AccessibilityNodeInfo): String? =
+        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() && !node.isEditable }
+
+    /** Testi del sottoalbero (testo e descrizione), esclusi i campi in cui l'utente scrive. */
+    private fun collectSegments(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
+        if (depth > MAX_DEPTH || out.size >= MAX_ITEM_SEGMENTS || !node.isVisibleToUser) return
+        if (!node.isEditable) {
+            node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { out += it.take(MAX_SEGMENT_CHARS) }
+            node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() && it != node.text?.toString()?.trim() }
+                ?.let { out += it.take(MAX_SEGMENT_CHARS) }
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectSegments(child, out, depth + 1)
+            release(child)
+        }
     }
 
     /** Indietro; se dopo 400 ms la ricerca è ancora a schermo (si era solo chiusa la tastiera), Home. */
@@ -604,29 +767,12 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             "inapp:$pkg:${hit.kind}:${hit.term}", EventType.CONTENT, Severity.WARNING,
             title, "${hit.category.label} · \"${hit.excerpt}\""
         )
-        val scrollable = hit.kind == InAppKind.AD || (hit.kind == InAppKind.CONTENT && pkg in FEED_PACKAGES)
-        when {
-            level >= 2 -> performGlobalAction(GLOBAL_ACTION_HOME)
-            level == 0 && scrollable && swipeForward() -> Unit
-            else -> performGlobalAction(GLOBAL_ACTION_BACK)
-        }
+        // Si esce solo quando è il contenuto principale a essere vietato (i banner si oscurano):
+        // Indietro, e Home se entro pochi secondi la schermata è ancora lì.
+        clearMasks()
+        performGlobalAction(if (level >= 1) GLOBAL_ACTION_HOME else GLOBAL_ACTION_BACK)
         handler.postDelayed({ scheduleScan(pkg, SystemClock.elapsedRealtime(), immediate = true) }, 600)
         Toast.makeText(this, "CutBet: $title", Toast.LENGTH_SHORT).show()
-    }
-
-    /** Scorrimento rapido verso l'alto: fa uscire dallo schermo l'annuncio o il video del feed. */
-    private fun swipeForward(): Boolean = try {
-        val metrics = resources.displayMetrics
-        val x = metrics.widthPixels * 0.5f
-        val path = Path().apply {
-            moveTo(x, metrics.heightPixels * 0.74f)
-            lineTo(x, metrics.heightPixels * 0.22f)
-        }
-        dispatchGesture(
-            GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 120)).build(), null, null
-        )
-    } catch (e: Exception) {
-        false
     }
 
     /** Categoria per cui l'app è bloccata, o null. Il risultato è in cache finché la whitelist non cambia. */
@@ -659,6 +805,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
     }
 
     private fun blockApp(pkg: String, category: ContentCategory, now: Long) {
+        clearMasks()
         if (now - lastAppBlockAt < RELOCK_THROTTLE_MS) return
         lastAppBlockAt = now
         val name = appName(pkg)
@@ -800,9 +947,15 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         return ignored
     }
 
-    override fun onInterrupt() = Unit
+    override fun onInterrupt() = clearMasks()
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        clearMasks()
+        return super.onUnbind(intent)
+    }
 
     override fun onDestroy() {
+        clearMasks()
         handler.removeCallbacksAndMessages(null)
         if (instance === this) instance = null
         super.onDestroy()
@@ -819,6 +972,14 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         private const val SEARCH_ESCALATION_MS = 1_500L
         private const val IN_APP_ESCALATION_MS = 5_000L
         private const val MAX_NODES = 600
+        private const val MAX_MODEL_NODES = 1_500
+        private const val MAX_ITEM_SEGMENTS = 40
+        private const val SPLIT_HEIGHT_RATIO = 0.30
+        private const val SPLIT_SEGMENTS = 8
+        private const val HEADER_TOP_RATIO = 0.20
+        private val SCROLL_CLASSES = listOf(
+            "RecyclerView", "ListView", "ScrollView", "NestedScrollView", "GridView", "WebView", "ViewPager", "ViewPager2",
+        )
         private const val MAX_SEGMENTS = 400
         private const val MAX_SEGMENT_CHARS = 1_200
         private const val MAX_QUERY_CHARS = 120
@@ -980,13 +1141,6 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         )
 
         /** Feed a scorrimento: annunci e post a rischio vengono prima scavalcati con uno scorrimento. */
-        private val FEED_PACKAGES = setOf(
-            "com.google.android.youtube", "com.instagram.android", "com.instagram.lite", "com.facebook.katana",
-            "com.facebook.lite", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.twitter.android",
-            "com.reddit.frontpage", "com.snapchat.android", "com.pinterest", "com.linkedin.android",
-            "com.google.android.apps.magazines", "flipboard.app", "tv.twitch.android.app", "com.vkontakte.android",
-            "com.threads.android", "com.instagram.barcelona",
-        )
 
         private const val HANDLED_EVENTS = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
@@ -1058,6 +1212,11 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         }
 
         /** true se l'utente ha attivato questo servizio in Impostazioni -> Accessibilità. */
+        /** Toglie i pannelli oscuranti (schermo spento, schermata di blocco). Sicuro da qualsiasi thread. */
+        fun clearMasksNow() {
+            instance?.let { service -> service.handler.post { service.clearMasks() } }
+        }
+
         fun isEnabled(context: Context): Boolean {
             val expected = ComponentName(context, SettingsGuardAccessibilityService::class.java)
             val enabled = Settings.Secure.getString(

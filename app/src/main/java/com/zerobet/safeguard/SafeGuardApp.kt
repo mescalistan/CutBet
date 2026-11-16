@@ -114,7 +114,10 @@ class SafeGuardApp : Application() {
                 when (intent.action) {
                     Intent.ACTION_USER_UNLOCKED -> onUserUnlocked()
                     Intent.ACTION_SCREEN_ON -> telegram.commands.onScreen(true)
-                    Intent.ACTION_SCREEN_OFF -> telegram.commands.onScreen(false)
+                    Intent.ACTION_SCREEN_OFF -> {
+                        telegram.commands.onScreen(false)
+                        com.zerobet.safeguard.guard.SettingsGuardAccessibilityService.clearMasksNow()
+                    }
                     Intent.ACTION_USER_PRESENT -> {
                         onUserUnlocked()
                         IntegrityChecker.check(context, "sblocco schermo")

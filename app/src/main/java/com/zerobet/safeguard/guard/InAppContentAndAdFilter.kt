@@ -100,7 +100,10 @@ object InAppContentAndAdFilter {
         segment.length <= 40 && SearchQueryClassifier.normalize(segment) in AD_CALLS
 
     /** Annuncio a rischio: indicatore di pubblicità con un termine a rischio nei segmenti vicini. */
-    fun findAd(segments: List<String>): InAppHit? {
+    fun findAd(segments: List<String>): InAppHit? = findAdSpan(segments)?.first
+
+    /** Come [findAd], con l'intervallo di segmenti dall'etichetta al testo a rischio (per oscurarli). */
+    fun findAdSpan(segments: List<String>): Pair<InAppHit, IntRange>? {
         val limit = minOf(segments.size, MAX_SEGMENTS)
         for (i in 0 until limit) {
             val window = when {
@@ -111,7 +114,7 @@ object InAppContentAndAdFilter {
             for (j in maxOf(0, i - window)..minOf(limit - 1, i + window)) {
                 if (j == i) continue
                 val hit = firstHit(segments[j]) ?: continue
-                return InAppHit(InAppKind.AD, hit.category, hit.term, segments[j].take(80))
+                return InAppHit(InAppKind.AD, hit.category, hit.term, segments[j].take(80)) to (minOf(i, j)..maxOf(i, j))
             }
         }
         return null
