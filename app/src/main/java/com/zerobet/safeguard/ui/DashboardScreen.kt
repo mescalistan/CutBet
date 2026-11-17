@@ -125,11 +125,14 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
         permissions = PermissionState.read(context)
     }
 
+    // Informativa in primo piano (Google Play) prima della richiesta VPN e delle impostazioni di Accessibilità.
+    var disclosure by remember { mutableStateOf<Disclosures.Kind?>(null) }
+
     fun setProtection(enabled: Boolean) {
         if (enabled) {
             val consent = VpnService.prepare(context)
             if (consent != null) {
-                vpnLauncher.launch(consent)
+                disclosure = Disclosures.Kind.VPN
             } else {
                 vm.pinManager.protectionEnabled = true
                 DomainBlockerVpnService.start(context)
@@ -144,6 +147,23 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
     fun openSystemScreen(intent: Intent) {
         GuardState.grant(GuardState.GRACE_AFTER_PIN_MS)
         context.startActivity(intent)
+    }
+
+    disclosure?.let { kind ->
+        DisclosureDialog(
+            kind,
+            onAccept = {
+                disclosure = null
+                when (kind) {
+                    Disclosures.Kind.VPN -> VpnService.prepare(context)?.let { vpnLauncher.launch(it) } ?: run {
+                        vm.pinManager.protectionEnabled = true
+                        DomainBlockerVpnService.start(context)
+                    }
+                    Disclosures.Kind.ACCESSIBILITY -> openSystemScreen(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
+            },
+            onDismiss = { disclosure = null },
+        )
     }
 
     LazyColumn(
@@ -204,9 +224,9 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
                             }) { Text("Riattiva Amministratore dispositivo") }
                         }
                         if (!permissions.accessibility) {
-                            OutlinedButton(onClick = {
-                                openSystemScreen(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                            }) { Text("Riattiva Guardiano Impostazioni") }
+                            OutlinedButton(onClick = { disclosure = Disclosures.Kind.ACCESSIBILITY }) {
+                                Text("Riattiva Guardiano Impostazioni")
+                            }
                         }
                     }
                 }

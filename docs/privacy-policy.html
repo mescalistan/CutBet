@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CutBet · Privacy Policy</title>
+<meta name="description" content="Informativa sulla privacy di CutBet, app di autotutela contro gioco d'azzardo, trading compulsivo e prestiti. Privacy Policy of CutBet.">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2430; --muted: #5b6676; --accent: #0d3b66;
+    --line: #dde2e8; --chip: #e8eef6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #11161d; --card: #19212b; --text: #e6ebf1; --muted: #a3afbd; --accent: #8fb8e8; --line: #2a3542; --chip: #22303f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--accent); color: #fff; padding: 32px 16px; }
+  @media (prefers-color-scheme: dark) { header { background: #0d2a48; } }
+  header .wrap, main { max-width: 860px; margin: 0 auto; }
+  header h1 { margin: 0 0 4px; font-size: 1.9rem; }
+  header p { margin: 0; opacity: .85; }
+  nav.lang { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  nav.lang a { color: #fff; text-decoration: none; padding: 6px 14px; border: 1px solid rgba(255,255,255,.5); border-radius: 999px; font-size: .9rem; }
+  main { padding: 24px 16px 48px; }
+  section.policy { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; margin-bottom: 28px; }
+  h2 { font-size: 1.45rem; margin: 0 0 4px; }
+  h3 { font-size: 1.1rem; margin: 26px 0 6px; color: var(--accent); }
+  p, li { color: var(--text); }
+  .muted { color: var(--muted); font-size: .92rem; }
+  ul { padding-left: 1.2rem; }
+  code { background: var(--chip); padding: 1px 6px; border-radius: 6px; font-size: .9em; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  a { color: var(--accent); }
+  footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 0 16px 32px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>CutBet · Privacy Policy</h1>
+    <p>Ultimo aggiornamento / Last updated: 17 novembre 2026 / November 17, 2026 · versione app 1.6.0</p>
+    <nav class="lang"><a href="#it">Italiano</a><a href="#en">English</a></nav>
+  </div>
+</header>
+<main>
+
+<!-- ============================== ITALIANO ============================== -->
+<section class="policy" id="it" lang="it">
+  <h2>Informativa sulla privacy</h2>
+  <p class="muted">Questa informativa descrive quali dati tratta l'app Android CutBet (package <code>com.zerobet.safeguard</code>), perché e dove.</p>
+
+  <h3>1. Scopo dell'app</h3>
+  <p>CutBet è uno strumento di <strong>autotutela e controllo concordato con un tutore</strong> (familiare, persona di fiducia o operatore) contro il gioco d'azzardo, il trading compulsivo e i prestiti facili. Blocca siti, app, ricerche e annunci di scommesse, trading speculativo e finanziamenti, e impedisce che la protezione venga disattivata senza il PIN del tutore. L'app non mostra pubblicità, non vende dati e non ha account né server propri.</p>
+
+  <h3>2. Dati trattati in breve</h3>
+  <div class="scroll"><table>
+    <tr><th>Dato</th><th>Dove resta</th><th>Esce dal telefono?</th></tr>
+    <tr><td>Testi visibili sullo schermo (letti dal servizio di accessibilità)</td><td>Analizzati solo in memoria sul telefono</td><td>No. Solo un breve estratto del contenuto bloccato compare negli avvisi Telegram, se il tutore li ha attivati</td></tr>
+    <tr><td>Nomi dei domini richiesti (DNS)</td><td>Valutati sul telefono</td><td>Solo i domini consentiti, inoltrati al resolver DNS pubblico (vedi §4)</td></tr>
+    <tr><td>Registro Allarmi (blocchi, tentativi di manomissione, eventi di sistema)</td><td>Database nella memoria privata dell'app sul telefono (non accessibile alle altre app)</td><td>No, salvo gli avvisi al Bot Telegram del tutore</td></tr>
+    <tr><td>PIN del tutore</td><td>Solo come hash, in preferenze cifrate</td><td>No</td></tr>
+    <tr><td>Foto e frase dei pannelli oscuranti</td><td>Cartella privata dell'app sul telefono</td><td>No (vedi §6)</td></tr>
+    <tr><td>Token del Bot Telegram e Chat ID del tutore</td><td>Preferenze cifrate sul telefono</td><td>Usati solo per comunicare con l'API di Telegram</td></tr>
+  </table></div>
+
+  <h3>3. Servizio di accessibilità (AccessibilityService)</h3>
+  <p>CutBet utilizza l'API AccessibilityService <strong>esclusivamente</strong> per aiutare l'utente nell'autotutela dal gioco d'azzardo e dal trading compulsivo: rileva sullo schermo testi, ricerche, annunci pubblicitari o impostazioni a rischio per oscurarli con un pannello o chiudere la schermata, e chiede il PIN del tutore quando si aprono le impostazioni che potrebbero disattivare la protezione. L'analisi avviene interamente sul dispositivo: <strong>nessun testo dello schermo o dato personale viene raccolto su server esterni o condiviso con terze parti</strong>. Le app di posta, SPID/CIE e della Pubblica Amministrazione sono trattate con regole dedicate (es. si oscurano solo le singole righe a rischio); indirizzi email e nomi utente non vengono mai usati per decidere un blocco. Prima di attivare il servizio l'app mostra un'informativa in primo piano e chiede il consenso esplicito.</p>
+
+  <h3>4. VPN locale (VpnService)</h3>
+  <p>CutBet utilizza una VPN <strong>esclusivamente locale</strong> sul dispositivo (DNS sinkhole): nella VPN passano solo le richieste DNS. I domini di gioco, trading e prestiti ricevono una risposta nulla; per i domini consentiti la richiesta DNS viene inoltrata a un resolver pubblico (<strong>Cloudflare 1.1.1.1</strong> o <strong>Google 8.8.8.8</strong>), come farebbe normalmente il telefono. Il resto del traffico internet <strong>non viene instradato, registrato né decifrato</strong> da CutBet e non passa da alcun server dello sviluppatore. Per le informative dei resolver: <a href="https://1.1.1.1/privacy" rel="noopener">Cloudflare</a>, <a href="https://developers.google.com/speed/public-dns/privacy" rel="noopener">Google Public DNS</a>.</p>
+
+  <h3>5. Amministratore dispositivo (DeviceAdminReceiver)</h3>
+  <p>Il permesso di amministratore dispositivo serve <strong>solo</strong> a impedire la disinstallazione di CutBet dalle normali schermate di Android, come concordato con il tutore. L'app non usa le funzioni di amministrazione per cancellare dati, cambiare password, bloccare lo schermo o leggere informazioni del dispositivo. Il tutore può disattivarlo in qualsiasi momento dalla dashboard con il PIN.</p>
+
+  <h3>6. Foto dei pannelli oscuranti</h3>
+  <p>Il tutore può scegliere fino a 10 foto (ad esempio familiari) e una frase da mostrare sui pannelli che coprono annunci e contenuti a rischio. Le foto vengono ridimensionate e <strong>copiate solo nella memoria privata dell'app sul telefono</strong>; non vengono caricate su alcun server. Se il tutore invia una foto al proprio Bot Telegram, l'app la scarica dai server di Telegram e la salva allo stesso modo. Si possono cancellare in qualsiasi momento dalla dashboard o con il comando <code>/cancella_foto</code>.</p>
+
+  <h3>7. Avvisi e comandi tramite Bot Telegram (facoltativo)</h3>
+  <p>Se il tutore collega un proprio Bot Telegram privato, CutBet invia alla sua chat avvisi sui blocchi e sui tentativi di manomissione (con data, app o sito e un breve estratto del contenuto bloccato), un messaggio di stato giornaliero e le risposte ai comandi del tutore. Questi messaggi transitano dai server di Telegram, soggetti alla <a href="https://telegram.org/privacy" rel="noopener">privacy policy di Telegram</a>. CutBet accetta comandi solo dalla chat collegata. La funzione è disattivata finché il tutore non la configura e si può scollegare in qualsiasi momento.</p>
+
+  <h3>8. Aggiornamento delle liste di blocco</h3>
+  <p>Periodicamente l'app scarica liste pubbliche di domini da bloccare (ADM, CONSOB, Block List Project, StevenBlack, Peter Lowe, crt.sh). Sono semplici download: non viene inviato alcun dato personale, ma come per ogni richiesta internet i server delle liste vedono l'indirizzo IP del telefono.</p>
+
+  <h3>9. Condivisione, vendita e conservazione</h3>
+  <p>CutBet <strong>non vende, non noleggia e non condivide</strong> dati personali con terze parti, non usa strumenti di analisi, tracciamento o pubblicità. I dati restano sul telefono finché l'app è installata: il tutore può svuotare il Registro Allarmi dalla dashboard; disinstallando l'app (con il PIN) tutti i dati locali vengono cancellati.</p>
+
+  <h3>10. Minori</h3>
+  <p>L'app non è rivolta ai minori e non raccoglie consapevolmente dati di minori. È pensata per adulti che scelgono di proteggersi con l'aiuto di un tutore.</p>
+
+  <h3>11. Diritti e contatti</h3>
+  <p>Poiché i dati restano sul dispositivo, l'utente e il tutore ne hanno il pieno controllo. Per domande su questa informativa si può aprire una segnalazione su <a href="https://github.com/mescalistan/CutBet/issues" rel="noopener">github.com/mescalistan/CutBet/issues</a>. Eventuali modifiche saranno pubblicate su questa pagina con la nuova data di aggiornamento.</p>
+</section>
+
+<!-- ============================== ENGLISH ============================== -->
+<section class="policy" id="en" lang="en">
+  <h2>Privacy Policy</h2>
+  <p class="muted">This policy explains which data the CutBet Android app (package <code>com.zerobet.safeguard</code>) processes, why and where.</p>
+
+  <h3>1. Purpose of the app</h3>
+  <p>CutBet is a <strong>self-protection tool set up together with a trusted guardian</strong> (family member, trusted person or counselor) against gambling, compulsive trading and easy loans. It blocks gambling, speculative trading and loan websites, apps, searches and ads, and prevents the protection from being switched off without the guardian's PIN. The app shows no ads, sells no data and has no accounts or servers of its own.</p>
+
+  <h3>2. Data at a glance</h3>
+  <div class="scroll"><table>
+    <tr><th>Data</th><th>Where it stays</th><th>Leaves the phone?</th></tr>
+    <tr><td>Text visible on screen (read by the accessibility service)</td><td>Analyzed in memory on the phone only</td><td>No. Only a short excerpt of blocked content appears in Telegram alerts, if the guardian enabled them</td></tr>
+    <tr><td>Requested domain names (DNS)</td><td>Evaluated on the phone</td><td>Only allowed domains, forwarded to a public DNS resolver (see §4)</td></tr>
+    <tr><td>Alarm log (blocks, tampering attempts, system events)</td><td>Database in the app's private storage on the phone (not accessible to other apps)</td><td>No, except alerts to the guardian's Telegram bot</td></tr>
+    <tr><td>Guardian PIN</td><td>Stored only as a hash, in encrypted preferences</td><td>No</td></tr>
+    <tr><td>Masking panel photos and caption</td><td>App-private folder on the phone</td><td>No (see §6)</td></tr>
+    <tr><td>Guardian's Telegram bot token and chat ID</td><td>Encrypted preferences on the phone</td><td>Used only to talk to the Telegram API</td></tr>
+  </table></div>
+
+  <h3>3. Accessibility service (AccessibilityService)</h3>
+  <p>CutBet uses the AccessibilityService API <strong>exclusively</strong> to help the user protect themselves from gambling and compulsive trading: it detects risky text, searches, ads or settings on screen in order to cover them with a panel or close the screen, and asks for the guardian's PIN when settings that could disable the protection are opened. All analysis happens on the device: <strong>no screen text or personal data is collected on external servers or shared with third parties</strong>. Mail, SPID/CIE digital identity and public administration apps follow dedicated rules (e.g. only individual risky rows are covered); email addresses and user names are never used to decide a block. Before the service is enabled, the app shows a prominent disclosure and asks for explicit consent.</p>
+
+  <h3>4. Local VPN (VpnService)</h3>
+  <p>CutBet uses a <strong>local-only</strong> VPN on the device (DNS sinkhole): only DNS requests go through it. Gambling, trading and loan domains get an empty answer; for allowed domains the DNS request is forwarded to a public resolver (<strong>Cloudflare 1.1.1.1</strong> or <strong>Google 8.8.8.8</strong>), just as the phone would normally do. All other internet traffic is <strong>not routed, logged or decrypted</strong> by CutBet and never passes through any developer server. Resolver policies: <a href="https://1.1.1.1/privacy" rel="noopener">Cloudflare</a>, <a href="https://developers.google.com/speed/public-dns/privacy" rel="noopener">Google Public DNS</a>.</p>
+
+  <h3>5. Device administrator (DeviceAdminReceiver)</h3>
+  <p>The device administrator permission is used <strong>only</strong> to prevent CutBet from being uninstalled from the standard Android screens, as agreed with the guardian. The app does not use administrator features to wipe data, change passwords, lock the screen or read device information. The guardian can disable it at any time from the dashboard with the PIN.</p>
+
+  <h3>6. Masking panel photos</h3>
+  <p>The guardian can choose up to 10 photos (for example of family members) and a caption to show on the panels that cover risky ads and content. Photos are resized and <strong>copied only into the app's private storage on the phone</strong>; they are never uploaded to any server. If the guardian sends a photo to their own Telegram bot, the app downloads it from Telegram's servers and stores it the same way. They can be deleted at any time from the dashboard or with the <code>/cancella_foto</code> command.</p>
+
+  <h3>7. Alerts and commands via Telegram bot (optional)</h3>
+  <p>If the guardian links their own private Telegram bot, CutBet sends to that chat alerts about blocks and tampering attempts (with date, app or site and a short excerpt of the blocked content), a daily status message and replies to the guardian's commands. These messages pass through Telegram's servers and are subject to <a href="https://telegram.org/privacy" rel="noopener">Telegram's privacy policy</a>. CutBet accepts commands only from the linked chat. The feature is off until the guardian sets it up and can be unlinked at any time.</p>
+
+  <h3>8. Block list updates</h3>
+  <p>The app periodically downloads public lists of domains to block (ADM, CONSOB, Block List Project, StevenBlack, Peter Lowe, crt.sh). These are plain downloads: no personal data is sent, but as with any internet request the list servers see the phone's IP address.</p>
+
+  <h3>9. Sharing, sale and retention</h3>
+  <p>CutBet <strong>does not sell, rent or share</strong> personal data with third parties and uses no analytics, tracking or advertising tools. Data stays on the phone while the app is installed: the guardian can clear the alarm log from the dashboard; uninstalling the app (with the PIN) deletes all local data.</p>
+
+  <h3>10. Children</h3>
+  <p>The app is not directed at children and does not knowingly collect children's data. It is meant for adults who choose to protect themselves with the help of a guardian.</p>
+
+  <h3>11. Your rights and contact</h3>
+  <p>Since data stays on the device, the user and the guardian keep full control over it. For questions about this policy, open an issue at <a href="https://github.com/mescalistan/CutBet/issues" rel="noopener">github.com/mescalistan/CutBet/issues</a>. Any changes will be published on this page with a new "last updated" date.</p>
+</section>
+
+</main>
+<footer>CutBet · <a href="index.html">Home</a></footer>
+</body>
+</html>

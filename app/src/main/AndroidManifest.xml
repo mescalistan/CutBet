@@ -48,7 +48,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SafeGuard"
         android:usesCleartextTraffic="${cleartextTraffic}"
-        tools:targetApi="34">
+        tools:targetApi="35">
 
         <!-- UI principale: onboarding + dashboard protetta da PIN. Niente schermo diviso o finestre
              flottanti: la dashboard e il PIN occupano sempre tutto lo schermo. -->

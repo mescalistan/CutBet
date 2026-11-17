@@ -419,6 +419,34 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Barra in modifica, Nuova scheda o cronologia: decide solo il testo scritto nella barra;
+        // le vecchie ricerche nei suggerimenti si oscurano riga per riga, il browser non si chiude mai.
+        BROWSER_URL_BARS[pkg]?.let { barId ->
+            val bar = root.findAccessibilityNodeInfosByViewId(barId)?.firstOrNull()
+            val barText = bar?.text?.toString()
+            val hint = bar != null && isHint(bar)
+            if (bar != null && OmniboxRules.isOmniboxState(bar.isFocused, barText, hint)) {
+                val query = if (bar.isFocused) OmniboxRules.typedQuery(barText, bar.textSelectionStart, bar.textSelectionEnd, hint) else ""
+                val r = android.graphics.Rect().also { bar.getBoundsInScreen(it) }
+                release(bar)
+                val barBox = Box(r.left, r.top, r.right, r.bottom)
+                val model = buildModel(root, marketplace = false)
+                // Righe dei suggerimenti/cronologia lette direttamente dalla lista sotto la barra: il modello
+                // generico unisce tutto il menu a tendina in un solo blocco (barra compresa).
+                val rows = omniboxRows(root, barBox).ifEmpty { model.items }
+                val decision = OmniboxRules.decide(query, rows, model.screen, barBox)
+                if (decision is GuardDecision.CloseScreen) {
+                    clearMasks()
+                    blockContent(decision.hit.category.label, now, "ricerca: ${decision.hit.excerpt}")
+                } else {
+                    // Righe di una lista: pannello a filo della riga, come nella posta.
+                    applyMasks(pkg, decision, now, AdMaskOverlayManager.LABEL_CONTENT, marginDp = 0f)
+                }
+                return
+            }
+            release(bar)
+        }
+
         // a) Il browser è su un dominio già in blacklist: può succedere se la pagina è arrivata
         //    aggirando il DNS (DoH per indirizzo IP, cache, proxy). Si esce comunque.
         if (host != null && filter.check(host).blocked) {
@@ -1037,6 +1065,44 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         val text = node.text?.toString()?.trim().orEmpty()
         if (text.isEmpty() || text.contains(' ')) return null
         return DomainRepository.normalizeDomain(text)
+    }
+
+    /**
+     * Righe di suggerimenti e cronologia: i figli delle liste scorrevoli che stanno sotto la barra
+     * (in Chrome `omnibox_suggestions_dropdown`; nella cronologia l'elenco delle visite). Una riga =
+     * un figlio, con tutti i suoi testi e la sua posizione.
+     */
+    private fun omniboxRows(root: AccessibilityNodeInfo, barBox: Box): List<ScreenItem> {
+        val rows = ArrayList<ScreenItem>()
+        val lists = ArrayList<AccessibilityNodeInfo>(2)
+        val rect = android.graphics.Rect()
+        fun findLists(node: AccessibilityNodeInfo?, depth: Int) {
+            if (node == null || depth > MAX_DEPTH || lists.size >= 3) return
+            if (node.isScrollable && node.childCount > 1) {
+                node.getBoundsInScreen(rect)
+                if (rect.bottom > barBox.bottom) { lists.add(node); return }
+            }
+            for (i in 0 until node.childCount) findLists(node.getChild(i), depth + 1)
+        }
+        fun texts(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
+            if (node == null || depth > 8 || out.size >= MAX_ITEM_SEGMENTS) return
+            node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { out.add(it) }
+            node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() && it !in out }?.let { out.add(it) }
+            for (i in 0 until node.childCount) texts(node.getChild(i), out, depth + 1)
+        }
+        findLists(root, 0)
+        for (list in lists) {
+            for (i in 0 until list.childCount) {
+                val child = list.getChild(i) ?: continue
+                child.getBoundsInScreen(rect)
+                val segments = ArrayList<String>()
+                texts(child, segments, 0)
+                if (segments.isNotEmpty() && rect.height() > 0) {
+                    rows.add(ScreenItem(segments, Box(rect.left, rect.top, rect.right, rect.bottom), ItemRole.CONTENT, anchorOf(child)))
+                }
+            }
+        }
+        return rows
     }
 
     /** Testo completo della barra degli indirizzi (percorso e parametri compresi), se visibile. */

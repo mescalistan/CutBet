@@ -161,6 +161,21 @@ app/src/main/
         └── components/PinPad.kt
 ```
 
+## Google Play
+
+- `compileSdk` e `targetSdk` **35** (Android 15): disegno edge-to-edge con `enableEdgeToEdge()`, contenuto
+  dentro l'area sicura (`safeDrawingPadding`, tastiera compresa) e fascia blu del marchio dietro le barre di
+  sistema. La VPN gira come foreground service `systemExempted`, il tipo previsto per le app `VpnService`.
+- Niente `QUERY_ALL_PACKAGES`: bastano le `<queries>` mirate (launcher e app avviabili), il nome del package
+  arriva da ogni `AccessibilityEvent`.
+- **Informativa in primo piano** (`ProminentDisclosure.kt`): prima di aprire le impostazioni di Accessibilità o
+  la richiesta VPN (onboarding, dashboard, schermata di riattivazione) un dialogo spiega l'uso dei dati, con
+  *Accetto e Continua* / *Annulla*. Senza consenso non si apre nulla.
+- Privacy Policy pubblica (italiano e inglese) in `docs/`, servita da GitHub Pages:
+  <https://mescalistan.github.io/CutBet/privacy-policy.html>.
+- Da compilare comunque in Play Console: dichiarazione dell'uso di AccessibilityService (con video), del
+  VpnService e del Device Admin, e la sezione *Sicurezza dei dati* coerente con la Privacy Policy.
+
 ## Come funziona il filtro
 
 1. La VPN dichiara come DNS un indirizzo fittizio (`10.111.222.2`) e instrada nella TUN solo quello.
@@ -170,6 +185,17 @@ app/src/main/
      `0.0.0.0` / `::` (sinkhole);
    - altrimenti → inoltrata.
 3. Le banche note sono in blacklist di default: solo quella scelta nel wizard resta raggiungibile.
+
+### Barra di ricerca, Nuova scheda e cronologia del browser (`OmniboxRules`)
+
+Quando la barra degli indirizzi è in modifica, sulla Nuova scheda e nelle pagine interne (`chrome://history`)
+decide **solo il testo scritto dall'utente** nella barra: una ricerca vietata scritta per intero ("trading
+online") fa uscire, come sempre. Il completamento automatico del browser non conta: Chrome, scritto "tr",
+mostra nella barra "trading online" preso dalla cronologia ma con il cursore dopo "tr"; si valuta solo il testo
+prima del cursore. Le righe dei suggerimenti e della cronologia **non fanno mai chiudere il browser**: ogni
+vecchia ricerca a rischio viene coperta dal pannello oscurante, riga per riga come nella posta, e si può
+continuare a scrivere e cercare altro. Le righe vengono lette direttamente dalla lista sotto la barra
+(`omnibox_suggestions_dropdown` in Chrome).
 
 ### SPID, CIE e Pubblica Amministrazione: esenzione totale (`IdentityAndPa`)
 
@@ -215,7 +241,7 @@ con ricerca binaria: match esatto, poi match sui domini padre (una ricerca per l
 | **Bypass di sistema** | PIN del tutore anche per: installazione manuale di APK (dialogo del package installer e pagina "Installa app sconosciute"), utenti multipli / ospite / secondo spazio / spazio privato / app clonate, opzioni sviluppatore e debug wireless (compresa la loro attivazione con i tocchi su "Numero build"), opzioni di ripristino (rete, preferenze app, dati di fabbrica, "Cancella tutti i dati"), **Data e ora**, app clonate / gemelle / parallele / Dual Messenger. Per le pagine delle Impostazioni conta solo il titolo: la pagina "Sistema", che elenca queste voci, resta libera. |
 | **Schermo diviso e finestre flottanti** | `MainActivity` e `LockScreenActivity` hanno `resizeableActivity="false"`. Se un'Impostazione protetta viene aperta in schermo diviso, finestra flottante o PiP, il Guardiano torna prima alla Home (chiude lo schermo diviso), poi apre il PIN a tutto schermo e registra l'evento come critico. |
 | **Manomissione di data/ora** | `TimeChangeReceiver` (`TIME_SET`, `TIMEZONE_CHANGED`) confronta la nuova ora con quella attesa dal tempo monotòno (`elapsedRealtime`): uno scarto oltre 5 minuti è un evento CRITICAL *"Manomissione data/ora di sistema rilevata"* (anche a telefono spento, se al riavvio l'ora è precedente all'ultima ora attendibile). Registro e avvisi usano l'ora attendibile; il blocco per PIN errati e la finestra anti-429 usano il tempo monotòno, quindi spostare l'orologio non li accorcia. |
-| **Modalità Discreta** | Nella dashboard, "Aspetto App nella Home": tre `<activity-alias>` della stessa Activity, uno solo abilitato con `setComponentEnabledSetting(..., DONT_KILL_APP)`: *CutBet* (scudo), *Servizi di Rete* (ingranaggio), *Gestione Batteria* (batteria). La protezione non si interrompe. |
+| **Modalità Discreta** | Nella dashboard, "Aspetto App nella Home": tre `<activity-alias>` della stessa Activity, uno solo abilitato con `setComponentEnabledSetting(..., DONT_KILL_APP)`: *Predefinito (CutBet)* (scudo), *CB Focus* (scudo minimale) e *CutBet Utility* (ingranaggio sobrio): nomi di benessere digitale, mai nomi di app di sistema (norme di Google Play sul comportamento ingannevole). I nomi dei componenti (`.LauncherBattery`, `.LauncherNetwork`) non cambiano, così chi li aveva scelti non perde l'icona aggiornando. La protezione non si interrompe. |
 | **DNS privato** | Il Guardiano chiede il PIN sul dialogo "DNS privato" delle Impostazioni; la dashboard avvisa se è impostato un provider. |
 
 Le voci delle liste esterne già coperte da parole chiave o euristica non vengono salvate (su circa

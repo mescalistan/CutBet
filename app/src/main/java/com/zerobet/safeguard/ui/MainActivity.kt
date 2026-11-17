@@ -3,9 +3,11 @@ package com.zerobet.safeguard.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
@@ -29,10 +31,14 @@ class MainActivity : ComponentActivity() {
     private var unlocked by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Android 15 (targetSdk 35): disegno edge-to-edge obbligatorio. Barre trasparenti con icone chiare
+        // sopra la fascia blu del tema, contenuto dentro l'area sicura (barre di sistema e tastiera).
+        enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
         setContent {
             SafeGuardTheme {
-                Surface(Modifier.fillMaxSize().systemBarsPadding(), color = MaterialTheme.colorScheme.background) {
+                SystemBarsBackdrop {
+                Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.background) {
                     val vm: MainViewModel = viewModel()
                     var onboardingDone by remember { mutableStateOf(vm.pinManager.onboardingDone) }
 
@@ -53,6 +59,7 @@ class MainActivity : ComponentActivity() {
 
                         else -> DashboardScreen(vm, onLock = { unlocked = false })
                     }
+                }
                 }
             }
         }

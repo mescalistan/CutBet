@@ -28,14 +28,16 @@ import androidx.compose.ui.unit.dp
 /**
  * Modalità Discreta: nome e icona dell'app nella Home. Tre `<activity-alias>` del manifest puntano
  * alla stessa MainActivity; ne è abilitato uno solo alla volta (DONT_KILL_APP: la protezione
- * continua a girare). Chi vede il telefono non trova un'app "anti-scommesse" in bella vista.
+ * continua a girare). Nomi sobri e conformi a Google Play: nessun nome di app di sistema.
  */
 object AppDisguise {
 
     enum class Appearance(val alias: String, val homeLabel: String, val title: String) {
-        DEFAULT(".LauncherDefault", "CutBet", "Predefinito (CutBet) · icona scudo"),
-        NETWORK(".LauncherNetwork", "Servizi di Rete", "Discreto - Sistema: \"Servizi di Rete\" (icona ingranaggio)"),
-        BATTERY(".LauncherBattery", "Gestione Batteria", "Discreto - Utility: \"Gestione Batteria\" (icona batteria)"),
+        DEFAULT(".LauncherDefault", "CutBet", "Predefinito (CutBet)"),
+        // Nomi di benessere digitale (norme Google Play sul comportamento ingannevole: niente nomi di
+        // app di sistema). I nomi dei componenti restano quelli di prima: chi li aveva scelti non perde l'icona.
+        FOCUS(".LauncherBattery", "CB Focus", "CB Focus (icona scudo minimale)"),
+        UTILITY(".LauncherNetwork", "CutBet Utility", "CutBet Utility (icona ingranaggio)"),
     }
 
     private const val NAMESPACE = "com.zerobet.safeguard"

@@ -15,10 +15,12 @@ import com.zerobet.safeguard.vpn.DomainBlockerVpnService
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
@@ -42,8 +44,12 @@ class LockScreenActivity : ComponentActivity() {
 
     /** Non null quando la schermata è stata aperta dal controllo di integrità. */
     private var problem by mutableStateOf<String?>(null)
+    private var disclosure by mutableStateOf<Disclosures.Kind?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Android 15 (targetSdk 35): disegno edge-to-edge obbligatorio. Barre trasparenti con icone chiare
+        // sopra la fascia blu del tema, contenuto dentro l'area sicura (barre di sistema e tastiera).
+        enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
         val pinManager = (application as SafeGuardApp).pinManager
         problem = intent.getStringExtra(EXTRA_PROBLEM)
@@ -61,7 +67,8 @@ class LockScreenActivity : ComponentActivity() {
 
         setContent {
             SafeGuardTheme {
-                Surface(Modifier.fillMaxSize().systemBarsPadding(), color = MaterialTheme.colorScheme.background) {
+                SystemBarsBackdrop {
+                Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.background) {
                     Column(
                         Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.Center,
@@ -80,18 +87,32 @@ class LockScreenActivity : ComponentActivity() {
                                 // Riattivare la protezione non richiede il PIN: serve solo per lasciarla spenta.
                                 GuardState.grant(GuardState.GRACE_AFTER_PIN_MS)
                                 if (issue == IntegrityChecker.PROBLEM_VPN) {
-                                    val consent = VpnService.prepare(this@LockScreenActivity)
-                                    if (consent != null) vpnLauncher.launch(consent) else {
+                                    if (VpnService.prepare(this@LockScreenActivity) != null) disclosure = Disclosures.Kind.VPN else {
                                         DomainBlockerVpnService.start(this@LockScreenActivity)
                                         pinAccepted = true
                                         finish()
                                     }
                                 } else {
-                                    pinAccepted = true
-                                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                    finish()
+                                    disclosure = Disclosures.Kind.ACCESSIBILITY
                                 }
                             }) { Text("Riattiva ora la protezione") }
+                            // Informativa in primo piano (Google Play) prima della schermata di sistema.
+                            disclosure?.let { kind ->
+                                DisclosureDialog(
+                                    kind,
+                                    onAccept = {
+                                        disclosure = null
+                                        if (kind == Disclosures.Kind.VPN) {
+                                            VpnService.prepare(this@LockScreenActivity)?.let { vpnLauncher.launch(it) }
+                                        } else {
+                                            pinAccepted = true
+                                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                            finish()
+                                        }
+                                    },
+                                    onDismiss = { disclosure = null },
+                                )
+                            }
                         }
                         PinVerify(
                             pinManager = pinManager,
@@ -107,6 +128,7 @@ class LockScreenActivity : ComponentActivity() {
                         )
                         TextButton(onClick = { leaveToHome() }) { Text("Annulla e torna alla Home") }
                     }
+                }
                 }
             }
         }

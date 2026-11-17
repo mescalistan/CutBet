@@ -232,6 +232,7 @@ private fun PermissionsStep(vm: MainViewModel, onFinished: () -> Unit) {
         if (result.resultCode == Activity.RESULT_OK) refresh()
     }
     val adminLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh() }
+    var disclosure by remember { mutableStateOf<Disclosures.Kind?>(null) }
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     // Android 13+: senza questo permesso la notifica del servizio VPN non sarebbe visibile.
@@ -243,14 +244,28 @@ private fun PermissionsStep(vm: MainViewModel, onFinished: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Informativa in primo piano (Google Play) prima di ogni schermata di sistema per VPN e Accessibilità.
+        disclosure?.let { kind ->
+            DisclosureDialog(
+                kind,
+                onAccept = {
+                    disclosure = null
+                    when (kind) {
+                        Disclosures.Kind.VPN -> {
+                            val intent = VpnService.prepare(context)
+                            if (intent != null) vpnLauncher.launch(intent) else refresh()
+                        }
+                        Disclosures.Kind.ACCESSIBILITY -> context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
+                },
+                onDismiss = { disclosure = null },
+            )
+        }
         PermissionCard(
             title = "1. Filtro di rete (VPN locale)",
             description = "Crea una VPN che resta sul telefono e controlla solo le richieste DNS. Nessun dato di navigazione viene inviato a server esterni.",
             granted = state.vpn,
-            onGrant = {
-                val intent = VpnService.prepare(context)
-                if (intent != null) vpnLauncher.launch(intent) else refresh()
-            }
+            onGrant = { disclosure = Disclosures.Kind.VPN }
         )
         PermissionCard(
             title = "2. Amministratore dispositivo",
@@ -262,7 +277,7 @@ private fun PermissionsStep(vm: MainViewModel, onFinished: () -> Unit) {
             title = "3. Guardiano Impostazioni (Accessibilità)",
             description = "Chiede il PIN quando qualcuno apre le Impostazioni per disattivare CutBet e legge i testi visibili in browser e app per bloccare pagine e annunci di scommesse, trading e prestiti. L'analisi avviene solo sul telefono: nulla viene salvato o inviato. Nell'elenco scegli \"CutBet – Guardiano Impostazioni\" e attivalo.",
             granted = state.accessibility,
-            onGrant = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            onGrant = { disclosure = Disclosures.Kind.ACCESSIBILITY }
         )
         PermissionCard(
             title = "4. Nessun risparmio energetico (consigliato)",
