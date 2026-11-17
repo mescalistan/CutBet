@@ -163,9 +163,9 @@ app/src/main/
 
 ## Google Play
 
-- `compileSdk` e `targetSdk` **35** (Android 15): disegno edge-to-edge con `enableEdgeToEdge()`, contenuto
+- `compileSdk` e `targetSdk` **36** (Android 16, minimo richiesto dalla Play Console), AGP 8.11.1. Disegno edge-to-edge con `enableEdgeToEdge()`, contenuto
   dentro l'area sicura (`safeDrawingPadding`, tastiera compresa) e fascia blu del marchio dietro le barre di
-  sistema. La VPN gira come foreground service `systemExempted`, il tipo previsto per le app `VpnService`.
+  sistema. La VPN gira come foreground service `systemExempted`, il tipo previsto per le app `VpnService`. Indietro gestito solo con `OnBackPressedDispatcher` (compatibile con il gesto Indietro predittivo). L'AAB include la mappa R8 (`BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`) per la decodifica degli arresti anomali.
 - Niente `QUERY_ALL_PACKAGES`: bastano le `<queries>` mirate (launcher e app avviabili), il nome del package
   arriva da ogni `AccessibilityEvent`.
 - **Informativa in primo piano** (`ProminentDisclosure.kt`): prima di aprire le impostazioni di Accessibilità o
