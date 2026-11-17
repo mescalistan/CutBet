@@ -58,6 +58,7 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
     private lateinit var app: SafeGuardApp
     private lateinit var appLabel: String
     private var ignoredPackages: Set<String> = emptySet()
+    private val exemptPackages = HashMap<String, Boolean>()
 
     private var lastLockAt = 0L
     private var lastIntegrityAt = 0L
@@ -135,6 +136,8 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         }
         // Scarto in O(1): una ricerca in HashSet, nessuna lettura dello schermo.
         if (pkg in ignoredPackages) return
+        // Varianti delle app SPID/PA ("it.agenziaentrate.mobile.servizionline..."): verdetto in cache.
+        if (exemptPackages.getOrPut(pkg) { IdentityAndPa.isExemptPackage(pkg) }) return
         // Nei browser la pagina va riletta quando si scorre (nuovi banner da oscurare).
         if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && pkg in BROWSER_URL_BARS) lastScanKeyAt = SystemClock.elapsedRealtime()
         // Scorrendo il testo non cambia ma le posizioni sì: la schermata va rivalutata (banner nuovi).
@@ -409,6 +412,13 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         val host = BROWSER_URL_BARS[pkg]?.let { readBrowserHost(root, it) }
         val filter = app.filterStore.current
 
+        // SPID, CIE e Pubblica Amministrazione (anche il login PosteID su poste.it): mai chiusi né oscurati.
+        val url = BROWSER_URL_BARS[pkg]?.let { readBrowserUrl(root, it) }
+        if (IdentityAndPa.isExemptUrl(host, url)) {
+            clearMasks()
+            return
+        }
+
         // a) Il browser è su un dominio già in blacklist: può succedere se la pagina è arrivata
         //    aggirando il DNS (DoH per indirizzo IP, cache, proxy). Si esce comunque.
         if (host != null && filter.check(host).blocked) {
@@ -431,6 +441,12 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         // b) La pagina per contenitori: intestazione, singoli box e banner (vedi ScreenDecider).
         val marketplace = Marketplaces.isMarketplace(pkg, host)
         val model = buildModel(root, marketplace)
+        // Pagina di login SPID/CIE di un servizio qualsiasi: niente blocchi lessicali né pannelli
+        // sul pulsante "Entra con SPID". I siti in blacklist sono già stati fermati sopra.
+        if (IdentityAndPa.isLoginPage(model.items.flatMap { it.segments }, url)) {
+            clearMasks()
+            return
+        }
         val decision = ScreenDecider.decide(model)
         if (decision is GuardDecision.CloseScreen) {
             clearMasks()
@@ -586,6 +602,12 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         val hash = screen.hash * 31 + pkg.hashCode()
         if (hash == lastScreenHash) return
         lastScreenHash = hash
+
+        // Login SPID/CIE dentro un'app (WebView): niente chiusure né pannelli sui pulsanti.
+        if (IdentityAndPa.isLoginPage(screen.segments)) {
+            clearMasks()
+            return
+        }
 
         // a) Ricerca scritta in una casella di ricerca dell'app (o mostrata nei risultati).
         for ((text, focused) in screen.searches) {
@@ -1017,6 +1039,13 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         return DomainRepository.normalizeDomain(text)
     }
 
+    /** Testo completo della barra degli indirizzi (percorso e parametri compresi), se visibile. */
+    private fun readBrowserUrl(root: AccessibilityNodeInfo, urlBarId: String): String? {
+        val node = root.findAccessibilityNodeInfosByViewId(urlBarId)?.firstOrNull() ?: return null
+        if (node.isFocused) return null
+        return node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() && !it.contains(' ') }
+    }
+
     /**
      * Esce dal contenuto: prima con Indietro; se entro pochi secondi si ricade su un altro
      * contenuto da bloccare (es. la pagina precedente è dello stesso sito) si va alla Home.
@@ -1051,6 +1080,8 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
     private fun buildIgnoredPackages(): Set<String> {
         val ignored = HashSet(ALWAYS_IGNORED)
         ignored.add(packageName)
+        // SPID, CIE, PA e autenticatori: mai analizzati (zero chiusure, zero pannelli).
+        ignored.addAll(IdentityAndPa.ALWAYS_ALLOWED_IDENTITY_AND_PA_PACKAGES)
         // Ogni lettura è protetta: un'eccezione qui impedirebbe al servizio di partire.
         // Launcher
         try {

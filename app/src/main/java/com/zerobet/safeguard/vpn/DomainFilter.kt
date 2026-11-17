@@ -3,6 +3,7 @@ package com.zerobet.safeguard.vpn
 import com.zerobet.safeguard.data.AutoLearnedBlockedDomain
 import com.zerobet.safeguard.data.BlockedDomain
 import com.zerobet.safeguard.data.WhitelistedBank
+import com.zerobet.safeguard.guard.IdentityAndPa
 
 /** Perché un dominio è stato bloccato. */
 enum class BlockReason {
@@ -63,6 +64,8 @@ class DomainFilter(
         val domain = normalize(rawDomain)
         if (domain.isEmpty()) return Verdict.ALLOW
         if (domain in ALWAYS_ALLOWED) return Verdict.ALLOW
+        // SPID, CIE e Pubblica Amministrazione: mai nel sinkhole, qualunque banca sia stata scelta.
+        if (IdentityAndPa.isExemptDomain(domain)) return Verdict.ALLOW
         if (matches(whitelist, domain)) return Verdict.ALLOW
         if (matches(blockedDomains, domain) || external.matches(domain)) return Verdict(BlockReason.LIST)
         return checkRules(domain)

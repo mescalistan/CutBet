@@ -171,6 +171,24 @@ app/src/main/
    - altrimenti → inoltrata.
 3. Le banche note sono in blacklist di default: solo quella scelta nel wizard resta raggiungibile.
 
+### SPID, CIE e Pubblica Amministrazione: esenzione totale (`IdentityAndPa`)
+
+Qualunque banca abbia scelto il tutore, l'identità digitale e i servizi pubblici restano sempre utilizzabili:
+
+- **DNS**: mai nel sinkhole qualsiasi `*.gov.it` ed `*.edu.it`, INPS, pagoPA, Fascicolo sanitario, Sistema TS,
+  `comune.*.it`, `regione.*.it`, ANPR e tutti gli Identity Provider SPID/CIE (Poste, Aruba, InfoCert, Sielte,
+  TIM, Namirial, Lepida, Register, Intesi, TeamSystem). Per Poste vale anche quando `poste.it` è bloccato perché
+  la banca scelta è un'altra: sono liberi `posteid.poste.it` e i sottodomini di `poste.it` con *posteid*, *spid*,
+  *saml* o *oauth* nel nome (nel browser conta l'URL intero); le pagine BancoPosta dei prestiti restano bloccate.
+- **App** (`ALWAYS_ALLOWED_IDENTITY_AND_PA_PACKAGES`): PosteID, CIE ID, IO, INPS, Agenzia delle Entrate,
+  Tessera Sanitaria, Immuni, le app degli altri Identity Provider e gli autenticatori (Google, Microsoft, Duo)
+  si aprono sempre e non vengono mai analizzate: zero chiusure, zero pannelli.
+- **Pagine di login**: con *Entra con SPID*, *Entra con CIE*, *Autorizza accesso SPID*, *PosteID*,
+  `LivelloSPID` o `SAMLRequest` nella pagina o nell'URL (anche dentro la WebView di un'app) non si applicano
+  blocchi lessicali né pannelli: pulsanti, QR code e richieste di autorizzazione restano visibili. I siti in
+  blacklist (DNS e indirizzo nel browser) vengono fermati prima, quindi un casinò con "Entra con SPID" già noto
+  resta bloccato.
+
 Le regole del tutore sono in `HashSet`; le liste esterne in un array ordinato di hash a 64 bit cercato
 con ricerca binaria: match esatto, poi match sui domini padre (una ricerca per label), senza allocazioni.
 

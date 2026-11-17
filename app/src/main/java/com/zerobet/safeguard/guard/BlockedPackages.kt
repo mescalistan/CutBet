@@ -96,6 +96,8 @@ object BlockedPackages {
     ): ContentCategory? {
         val pkg = packageName.lowercase()
         if (NEVER_BLOCKED_PREFIXES.any { pkg.startsWith(it) }) return null
+        // SPID, CIE, app della PA e autenticatori: sempre consentite, anche con un'altra banca scelta.
+        if (IdentityAndPa.isExemptPackage(pkg)) return null
         // App bancarie del catalogo: libera quella della banca in whitelist, bloccate tutte le altre.
         if (banks.isAllowed(pkg)) return null
         if (banks.isKnownBank(pkg)) return ContentCategory.BANK
