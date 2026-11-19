@@ -106,6 +106,7 @@ class LockScreenActivity : ComponentActivity() {
                                             VpnService.prepare(this@LockScreenActivity)?.let { vpnLauncher.launch(it) }
                                         } else {
                                             pinAccepted = true
+                                            GuardState.grantForSettings(GuardState.GRACE_AFTER_PIN_MS)
                                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                                             finish()
                                         }

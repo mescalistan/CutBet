@@ -145,7 +145,7 @@ fun DashboardScreen(vm: MainViewModel, onLock: () -> Unit) {
 
     /** Apre una schermata di sistema concedendo al tutore la finestra di grazia del Guardiano. */
     fun openSystemScreen(intent: Intent) {
-        GuardState.grant(GuardState.GRACE_AFTER_PIN_MS)
+        GuardState.grantForSettings(GuardState.GRACE_AFTER_PIN_MS)
         context.startActivity(intent)
     }
 

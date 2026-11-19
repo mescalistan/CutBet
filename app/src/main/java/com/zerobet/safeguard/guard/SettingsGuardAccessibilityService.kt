@@ -158,6 +158,12 @@ class SettingsGuardAccessibilityService : AccessibilityService() {
         }
         // Attivo solo a wizard completato (durante l'onboarding il tutore deve poter concedere
         // i permessi) e in silenzio nella finestra di grazia concessa dal PIN.
+        // Grazia concessa solo per le Impostazioni: finisce quando il tutore apre un'altra app.
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && GuardState.settingsOnly && GuardState.inGrace &&
+            GuardState.leavesSettings(pkg, packageName, SETTINGS_PACKAGES, ignoredPackages)
+        ) {
+            GuardState.revoke()
+        }
         if (!onboardingDone || GuardState.inGrace || GuardState.lockScreenVisible) return
 
         if (pkg in SETTINGS_PACKAGES) {

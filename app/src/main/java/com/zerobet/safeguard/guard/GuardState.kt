@@ -18,13 +18,36 @@ object GuardState {
     /** true mentre la LockScreenActivity è visibile: evita di rilanciarla a raffica. */
     @Volatile var lockScreenVisible = false
 
+    /** true se la finestra di grazia corrente serve solo per le Impostazioni di sistema. */
+    @Volatile var settingsOnly = false
+        private set
+
     fun grant(durationMs: Long) {
+        settingsOnly = false
         graceUntil = SystemClock.elapsedRealtime() + durationMs
+    }
+
+    /**
+     * Grazia per una schermata delle Impostazioni aperta dalla dashboard (Accessibilità, VPN,
+     * amministratore): finisce appena il tutore passa a un'altra app (vedi [leavesSettings]),
+     * così la protezione riparte subito invece di restare muta fino allo scadere del minuto.
+     */
+    fun grantForSettings(durationMs: Long) {
+        graceUntil = SystemClock.elapsedRealtime() + durationMs
+        settingsOnly = true
     }
 
     fun revoke() {
         graceUntil = 0L
+        settingsOnly = false
     }
+
+    /**
+     * Kotlin puro: true se una finestra aperta da [packageName] significa "il tutore ha lasciato le
+     * Impostazioni". Home, barra di sistema e tastiera ([ignored]) e CutBet stesso non contano.
+     */
+    fun leavesSettings(packageName: String, ownPackage: String, settingsPackages: Set<String>, ignored: Set<String>): Boolean =
+        packageName != ownPackage && packageName !in settingsPackages && packageName !in ignored
 
     val inGrace: Boolean
         get() = SystemClock.elapsedRealtime() < graceUntil
